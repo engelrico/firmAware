@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "id": "tolino.shine-4",
+  "name": "tolino Shine 4 – Firmware",
+  "manufacturer": "tolino",
+  "model": "Shine 4",
+  "source_type": "text",
+  "source_url": "https://mytolino.de/software-updates-tolino-ereader/",
+  "encoding": "utf-8",
+  "version_pattern": "(?is)<img\\b[^>]*\\balt\\s*=\\s*\"tolino shine 4 logo\"[^>]*>\\s*</figure>\\s*<figure\\b[^>]*>\\s*<table\\b[^>]*>\\s*<thead\\b[^>]*>.*?</thead>\\s*<tbody\\b[^>]*>\\s*<tr\\b[^>]*>\\s*<td\\b[^>]*>\\s*([0-9]+(?:\\.[0-9]+)+)\\s*</td>"
+}

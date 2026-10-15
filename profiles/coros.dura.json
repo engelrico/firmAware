@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "id": "coros.dura",
+  "name": "COROS DURA – Firmware",
+  "manufacturer": "COROS",
+  "model": "DURA",
+  "source_type": "text",
+  "source_url": "https://support.coros.com/hc/en-us/articles/32924317141652-COROS-DURA-Release-Notes",
+  "version_pattern": "\\bV\\s*([0-9]+(?:\\.[0-9]+){2,3})\\b"
+}

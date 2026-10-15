@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "id": "nintendo.switch",
+  "name": "Nintendo Switch – Systemupdates",
+  "manufacturer": "Nintendo",
+  "model": "Switch",
+  "source_type": "text",
+  "source_url": "https://www.nintendo.com/de-de/Support/Fehlersuche/System-Updates-fur-Nintendo-Switch-und-Liste-der-Anderungen-1548034.html",
+  "version_pattern": "Verbesserungen\\s+in\\s+Version\\s+([0-9]+\\.[0-9]+\\.[0-9]+)"
+}

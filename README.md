@@ -1,0 +1,241 @@
+# firmAware
+
+**firmAware** checks public firmware sources for configured devices and
+reports previously unknown version labels in the terminal. Known versions are
+stored locally, so each run only highlights new entries.
+
+The application runs locally, requires **no dedicated cloud service**, and relies
+**exclusively on the Python standard library** (no pip dependencies, no database).
+
+> Note: firmAware observes published version lists. It does **not** check the
+> firmware installed on a device and does **not** confirm that an update is
+> available for a specific device.
+
+## How it works
+
+1. A source (HTML/text or JSON) is fetched for each device.
+2. The published versions are extracted via a search pattern or a path.
+3. The found versions are compared with the stored state.
+4. New labels are reported; all known versions are retained.
+
+On the first successful fetch, all detected versions are stored as the
+**baseline** and are not yet reported as new.
+
+## Requirements
+
+- Python 3 (tested with Python 3.14)
+- Internet access to the configured sources
+
+## Quick start
+
+Standard run – check sources and update state:
+
+```bash
+python3 firmaware.py
+python3 firmaware.py --check
+```
+
+Show stored state without a network request:
+
+```bash
+python3 firmaware.py --status
+```
+
+Create a device profile interactively:
+
+```bash
+python3 firmaware.py --create-profile --profiles-dir ./profiles
+```
+
+Custom file paths:
+
+```bash
+python3 firmaware.py --devices /path/devices.json --state /path/state.json
+```
+
+### CLI options
+
+| Option | Meaning |
+|---|---|
+| `--check` | Check sources and update state (default) |
+| `--status` | Only show stored state, no network request |
+| `--create-profile` | Create and export a device profile interactively |
+| `--devices PATH` | Path to `devices.json` (default: next to the script) |
+| `--state PATH` | Path to `state.json` (default: next to the script) |
+| `--profiles-dir PATH` | Directory with device profiles (default: `profiles` next to the script) |
+
+`--check`, `--status`, and `--create-profile` are mutually exclusive.
+Without arguments, `devices.json`, `state.json`, and `profiles/` are looked up
+relative to the directory of the Python file – **not** relative to the current
+working directory. An explicitly relative `--profiles-dir`, however, is resolved
+relative to the current working directory.
+
+Exit codes: `0` success, `1` configuration, check, or storage error,
+`130` abort via `Ctrl+C`.
+
+## Configuring devices
+
+The configuration is split in two:
+
+- `devices.json` describes the **personal device selection**.
+- `profiles/*.json` describe **reusable** fetch and version extraction.
+
+A device is configured either directly or via a profile reference; both forms
+may be mixed.
+
+### Profile-based
+
+```json
+{
+  "devices": [
+    { "id": "coros-dura", "profile": "coros.dura" },
+    { "id": "my-repeater", "profile": "tplink.re200-v4-eu", "name": "My Repeater" }
+  ]
+}
+```
+
+Profile-based entries may contain **only** the fields `id`, `profile`, and
+`name`. Technical fields such as `source_url` are a configuration error here.
+
+### Direct
+
+```json
+{
+  "devices": [
+    {
+      "id": "coros-dura",
+      "name": "COROS DURA – Firmware",
+      "source_type": "text",
+      "source_url": "https://support.coros.com/hc/en-us/articles/32924317141652-COROS-DURA-Release-Notes",
+      "version_pattern": "\\bV\\s*([0-9]+(?:\\.[0-9]+){2,3})\\b"
+    }
+  ]
+}
+```
+
+## Device profiles
+
+A profile corresponds to schema version `1`. The file name must match the
+profile ID (`<id>.json`). Example `profiles/coros.dura.json`:
+
+```json
+{
+  "schema_version": 1,
+  "id": "coros.dura",
+  "name": "COROS DURA – Firmware",
+  "manufacturer": "COROS",
+  "model": "DURA",
+  "source_type": "text",
+  "source_url": "https://support.coros.com/hc/en-us/articles/32924317141652-COROS-DURA-Release-Notes",
+  "version_pattern": "\\bV\\s*([0-9]+(?:\\.[0-9]+){2,3})\\b"
+}
+```
+
+Supported source types:
+
+| `source_type` | Description | Required fields |
+|---|---|---|
+| `text` | Regex on HTML/text (after `html.unescape`) | `version_pattern` |
+| `json` | Versions from a JSON list | `items_key`, `version_key` |
+| `json_value` | Single value via a nested path | `value_path` |
+
+For `version_pattern`, the following applies: without a capture group, the full
+match is the version; with exactly one capture group, its content is; more than
+one capture group is a configuration error.
+
+Profile IDs must match the pattern `[a-z0-9][a-z0-9._-]*`. Profile files are
+loaded exclusively from within the profiles directory; symlinks must not lead
+outside the directory. Profiles contain **no** credentials and **no** runtime
+state.
+
+## Profile wizard
+
+The dialog-driven wizard (`--create-profile`) creates a text/HTML profile
+without requiring knowledge of the JSON schema or regular expressions:
+
+```bash
+python3 firmaware.py --create-profile --profiles-dir ./profiles
+```
+
+1. **Describe device:** manufacturer, model, display name, and profile ID.
+2. **Fetch source:** enter an HTTP/HTTPS URL (30 s timeout, 5 MiB limit,
+   validation of every redirect target).
+3. **Capture sample version:** a firmware label visible on the page
+   (max. 100 characters).
+4. **Select match:** all matches are shown with context; the first match is
+   never selected automatically.
+5. **Suggest version format:** rule-based from fixed templates
+   (dot version, prefix version, composite version).
+6. **Validation and preview:** each candidate is tested; export only after
+   explicit confirmation, atomically and without silently overwriting.
+
+The wizard works purely rule-based – **no AI** and no external AI services. It
+**never** modifies `devices.json` or `state.json` and is intended as a local CLI
+tool, not as a publicly reachable URL fetch service.
+
+## State: `state.json`
+
+```json
+{
+  "devices": {
+    "nanostation-m5-xm": {
+      "last_checked": "2026-10-15T07:17:54+02:00",
+      "known_versions": ["6.3.24", "6.3.26"]
+    }
+  }
+}
+```
+
+- `last_checked`: time of the last **successful** check (local, with UTC offset).
+- `known_versions`: all version labels detected so far (deduplicated, sorted
+  lexicographically).
+- The sorting is **not** a semantic version comparison.
+- Versions that have disappeared from the source remain known.
+- Storage is keyed by the **local** device ID, not the profile ID. When
+  switching to a profile, the same local version state is retained.
+
+If `state.json` is missing, an empty state is used. The file is written
+atomically via an adjacent `.tmp` file.
+
+## Tests
+
+Automated tests without network access (sources are replaced by test doubles):
+
+```bash
+python3 -m unittest discover -s tests -t .
+```
+
+## Project structure
+
+```text
+firmAware/
+├── firmaware.py                              # fetch, extraction, comparison, profiles, wizard
+├── devices.json                              # personal device selection
+├── profiles/                                 # reusable device profiles
+│   └── *.json
+├── state.json                                # known versions and last checks
+├── tests/
+│   └── test_firmaware.py                     # automated tests (standard library only)
+└── requirements/
+    ├── specification.md                      # project specification
+    ├── firmAware-requirement-geraeteprofile.md
+    └── firmAware-requirement-profilassistent.md
+```
+
+## Limitations
+
+- No automatic scheduling and no long-running background service.
+- No push, email, or MQTT notifications.
+- No semantic version comparison ("higher/lower") and no determination of the
+  latest version.
+- No detection of installed device firmware and no automatic installation.
+- No JavaScript execution, authentication, pagination, or bypassing of HTTP
+  blocks (e.g. HTTP 403).
+- No distinction between beta and stable unless the source itself is limited.
+- No guaranteed long-term stability of manufacturer endpoints.
+- URLs and search patterns are considered trusted local configuration and are
+  not intended for unverified public input.
+- No file locking; concurrent invocations using the same state file are not
+  supported.
+
+Further details are available in [`requirements/specification.md`](requirements/specification.md).

@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "id": "philips.tv-tpm211ea",
+  "name": "Philips TV – TPM211EA",
+  "manufacturer": "Philips",
+  "model": "TPM211EA",
+  "source_type": "text",
+  "source_url": "https://toengel.net/philipsblog/firmware-archiv/",
+  "version_pattern": "(TPM211EA_[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+)"
+}

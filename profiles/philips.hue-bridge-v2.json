@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "id": "philips.hue-bridge-v2",
+  "name": "Philips Hue Bridge V2 – Firmware",
+  "manufacturer": "Philips",
+  "model": "Hue Bridge V2",
+  "source_type": "text",
+  "source_url": "https://www.philips-hue.com/en-us/support/release-notes/bridge",
+  "version_pattern": "(?i)Software\\s+version\\s*:?\\s*([0-9]+(?:\\.[0-9]+)*)"
+}

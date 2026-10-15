@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "id": "brother.ads-2500we",
+  "name": "Brother ADS-2500We – Firmware",
+  "manufacturer": "Brother",
+  "model": "ADS-2500We",
+  "source_type": "text",
+  "source_url": "https://support.brother.com/g/b/downloadlist.aspx?c=de&lang=de&prod=ads2600we_eu_as_cn&os=10013",
+  "version_pattern": "(?i)Firmware\\s+Update\\s+Software(?:(?!</tr\\b)[\\s\\S])*?<em>\\s*[0-9]{2}\\.[0-9]{2}\\.[0-9]{4}\\s*<br\\s*/?>\\s*\\(\\s*([A-Za-z]+(?:\\s*/\\s*[A-Za-z]+)?)\\s*\\)"
+}

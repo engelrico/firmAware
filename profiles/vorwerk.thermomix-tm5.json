@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "id": "vorwerk.thermomix-tm5",
+  "name": "Thermomix TM5 – Firmware",
+  "manufacturer": "Vorwerk",
+  "model": "Thermomix TM5",
+  "source_type": "text",
+  "source_url": "https://support-de.vorwerk.com/hc/de/articles/35480859847954-Software-Updates-Thermomix-TM5",
+  "version_pattern": ">\\s*(2\\.[0-9]+)\\s*<"
+}

@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "id": "apple.macos",
+  "name": "Apple Mac – macOS",
+  "manufacturer": "Apple",
+  "model": "Mac (macOS)",
+  "source_type": "text",
+  "source_url": "https://support.apple.com/en-us/100100",
+  "version_pattern": "\\bmacOS\\s+(?:[A-Za-z]+\\s+)*([0-9]+(?:\\.[0-9]+){0,2})\\b"
+}
