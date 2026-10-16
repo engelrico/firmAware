@@ -1034,6 +1034,11 @@ class VersionSortKeyTests(unittest.TestCase):
     def test_empty_string_sorts_lowest(self):
         self.assertLess(fw.version_sort_key(""), fw.version_sort_key("1.0"))
 
+    def test_more_blocks_sort_higher(self):
+        self.assertLess(
+            fw.version_sort_key("1978074000"), fw.version_sort_key("6.1.1978418030")
+        )
+
 
 if __name__ == "__main__":
     sys.exit(unittest.main())

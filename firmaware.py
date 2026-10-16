@@ -460,19 +460,16 @@ def name_column_width(devices: Sequence[Mapping[str, Any]]) -> int:
 
 
 def version_sort_key(version: str) -> tuple:
-    """Sort key for version labels: numeric blocks as integers, rest as text.
+    """Sort key for version labels: block count first, then numeric blocks.
 
-    Makes ``"1.10"`` sort above ``"1.9"`` and ``"2014-01-07"`` above
-    ``"2013-12-18"`` regardless of the source's ordering.
+    Newer version formats usually carry more numeric blocks (e. g.
+    ``6.1.1978418030`` vs. legacy ``1978074000``), so the block count is the
+    primary criterion. Within equal block counts, blocks are compared as
+    integers so ``"1.10"`` sorts above ``"1.9"``.
     """
-    parts = re.findall(r"[0-9]+|[^0-9]+", version or "")
-    key: list[tuple[int, int, str]] = []
-    for part in parts:
-        if part.isdigit():
-            key.append((0, int(part), ""))
-        else:
-            key.append((1, 0, part))
-    return tuple(key)
+    blocks = re.findall(r"[0-9]+", version or "")
+    numeric_blocks = [int(block) for block in blocks]
+    return (len(numeric_blocks), *numeric_blocks, version or "")
 
 
 def check_summary(
