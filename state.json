@@ -1,7 +1,7 @@
 {
   "devices": {
     "tplink-re200-v4-eu": {
-      "last_checked": "2026-10-15T07:35:37+02:00",
+      "last_checked": "2026-10-16T07:25:54+02:00",
       "known_versions": [
         "RE200(EU)_V4_191104",
         "RE200(EU)_V4_200708",
@@ -12,7 +12,7 @@
       ]
     },
     "nanostation-m5-xm": {
-      "last_checked": "2026-10-15T07:35:40+02:00",
+      "last_checked": "2026-10-16T07:25:56+02:00",
       "known_versions": [
         "3.6.11",
         "6.3.12",
@@ -46,13 +46,13 @@
       ]
     },
     "shelly-1-gen1-stable": {
-      "last_checked": "2026-10-15T07:35:43+02:00",
+      "last_checked": "2026-10-16T07:25:59+02:00",
       "known_versions": [
         "20230913-112003/v1.14.0-gcb84623"
       ]
     },
     "philips-tv-tpm211ea": {
-      "last_checked": "2026-10-15T07:35:43+02:00",
+      "last_checked": "2026-10-16T07:26:01+02:00",
       "known_versions": [
         "TPM211EA_001.001.113.209",
         "TPM211EA_001.001.113.216",
@@ -86,7 +86,7 @@
       ]
     },
     "nanostation-m5-xw": {
-      "last_checked": "2026-10-15T07:35:43+02:00",
+      "last_checked": "2026-10-16T07:25:59+02:00",
       "known_versions": [
         "5.6.15",
         "6.0.3",
@@ -121,7 +121,7 @@
       ]
     },
     "sonos-system": {
-      "last_checked": "2026-10-15T07:35:43+02:00",
+      "last_checked": "2026-10-16T07:26:01+02:00",
       "known_versions": [
         "81.1-58210",
         "82.2-59204",
@@ -163,7 +163,7 @@
       ]
     },
     "nintendo-switch": {
-      "last_checked": "2026-10-15T07:35:44+02:00",
+      "last_checked": "2026-10-16T07:26:02+02:00",
       "known_versions": [
         "10.0.0",
         "10.0.1",
@@ -234,13 +234,13 @@
       ]
     },
     "fritzbox-6660-cable": {
-      "last_checked": "2026-10-15T07:35:44+02:00",
+      "last_checked": "2026-10-16T07:26:02+02:00",
       "known_versions": [
         "8.25"
       ]
     },
     "philips-hue-bridge-v2": {
-      "last_checked": "2026-10-15T07:35:44+02:00",
+      "last_checked": "2026-10-16T07:26:02+02:00",
       "known_versions": [
         "1.78.1978293000",
         "1947054040",
@@ -309,20 +309,20 @@
       ]
     },
     "thermomix-tm5": {
-      "last_checked": "2026-10-15T07:35:44+02:00",
+      "last_checked": "2026-10-16T07:26:03+02:00",
       "known_versions": [
         "2.15",
         "2.16"
       ]
     },
     "fritzfon-c5": {
-      "last_checked": "2026-10-15T07:35:44+02:00",
+      "last_checked": "2026-10-16T07:26:02+02:00",
       "known_versions": [
         "5.11"
       ]
     },
     "coros-dura": {
-      "last_checked": "2026-10-15T07:35:45+02:00",
+      "last_checked": "2026-10-16T07:26:03+02:00",
       "known_versions": [
         "3.0508.0",
         "3.0509.0",
@@ -347,7 +347,7 @@
       ]
     },
     "apple-ios": {
-      "last_checked": "2026-10-15T07:35:45+02:00",
+      "last_checked": "2026-10-16T07:26:04+02:00",
       "known_versions": [
         "12.5.8",
         "15.8.1",
@@ -431,7 +431,7 @@
       ]
     },
     "apple-ipados": {
-      "last_checked": "2026-10-15T07:35:45+02:00",
+      "last_checked": "2026-10-16T07:26:04+02:00",
       "known_versions": [
         "12.5.8",
         "15.8.1",
@@ -521,7 +521,7 @@
       ]
     },
     "apple-macos": {
-      "last_checked": "2026-10-15T07:35:45+02:00",
+      "last_checked": "2026-10-16T07:26:05+02:00",
       "known_versions": [
         "11.7.11",
         "12.7.3",
@@ -615,7 +615,7 @@
       ]
     },
     "raspberry-pi-os-32bit": {
-      "last_checked": "2026-10-15T07:35:46+02:00",
+      "last_checked": "2026-10-16T07:26:05+02:00",
       "known_versions": [
         "2013-09-10",
         "2013-09-25",
@@ -692,25 +692,25 @@
       ]
     },
     "tolino-shine-4": {
-      "last_checked": "2026-10-15T07:35:46+02:00",
+      "last_checked": "2026-10-16T07:26:04+02:00",
       "known_versions": [
         "16.2.1"
       ]
     },
     "brother-hl-3152cdw": {
-      "last_checked": "2026-10-15T07:35:46+02:00",
+      "last_checked": "2026-10-16T07:26:04+02:00",
       "known_versions": [
         "1.13/1.02"
       ]
     },
     "brother-ads-2500we": {
-      "last_checked": "2026-10-15T07:35:47+02:00",
+      "last_checked": "2026-10-16T07:26:04+02:00",
       "known_versions": [
         "L/D"
       ]
     },
     "brother-scanncut-cm700": {
-      "last_checked": "2026-10-15T07:35:47+02:00",
+      "last_checked": "2026-10-16T07:26:04+02:00",
       "known_versions": [
         "1.0.0",
         "1.0.1",
@@ -719,7 +719,7 @@
       ]
     },
     "brother-ql700": {
-      "last_checked": "2026-10-15T07:35:47+02:00",
+      "last_checked": "2026-10-16T07:26:04+02:00",
       "known_versions": [
         "6.5.0c"
       ]

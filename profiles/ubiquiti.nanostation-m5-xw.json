@@ -1,9 +1,10 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "id": "ubiquiti.nanostation-m5-xw",
   "name": "NanoStation M5 XW",
   "manufacturer": "Ubiquiti",
   "model": "NanoStation M5 XW",
+  "category": "firmware",
   "source_type": "json",
   "source_url": "https://download.svc.ui.com/v1/downloads/products/slugs/nsm5-xw",
   "items_key": "downloads",

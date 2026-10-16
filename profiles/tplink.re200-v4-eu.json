@@ -1,9 +1,10 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "id": "tplink.re200-v4-eu",
   "name": "TP-Link RE200 V4 EU",
   "manufacturer": "TP-Link",
   "model": "RE200 V4 EU",
+  "category": "firmware",
   "source_type": "text",
   "source_url": "https://www.tp-link.com/de/support/download/re200/v4/",
   "version_pattern": "(RE200\\(EU\\)_V4_[0-9]+)"

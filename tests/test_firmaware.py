@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests für firmAware (firmaware.py) – nur Standardbibliothek (unittest)."""
+"""Tests for firmAware (firmaware.py) – standard library only (unittest)."""
 from __future__ import annotations
 
 import contextlib
@@ -18,7 +18,7 @@ import firmaware as fw
 class TextExtractionTests(unittest.TestCase):
     def test_capture_group_is_used(self):
         device = {"version_pattern": r"RE200\(EU\)_V4_[0-9]+"}
-        content = "Datei RE200(EU)_V4_200922 und RE200(EU)_V4_210916"
+        content = "File RE200(EU)_V4_200922 and RE200(EU)_V4_210916"
         self.assertEqual(
             fw.versions_from_text(device, content),
             {"RE200(EU)_V4_200922", "RE200(EU)_V4_210916"},
@@ -34,7 +34,7 @@ class TextExtractionTests(unittest.TestCase):
 
     def test_two_groups_are_rejected(self):
         device = {"version_pattern": r"(a)(b)"}
-        with self.assertRaisesRegex(ValueError, "höchstens eine Klammergruppe"):
+        with self.assertRaisesRegex(ValueError, "capturing group"):
             fw.versions_from_text(device, "ab")
 
 
@@ -53,17 +53,17 @@ class JsonExtractionTests(unittest.TestCase):
 
     def test_missing_version_fails(self):
         content = json.dumps({"downloads": [{"enabled": True}]})
-        with self.assertRaisesRegex(ValueError, "Versionsfeld"):
+        with self.assertRaisesRegex(ValueError, "Version field"):
             fw.versions_from_json(self.DEVICE, content)
 
     def test_non_list_fails(self):
         content = json.dumps({"downloads": {"version": "x"}})
-        with self.assertRaisesRegex(ValueError, "JSON-Liste fehlt"):
+        with self.assertRaisesRegex(ValueError, "Expected JSON list is missing"):
             fw.versions_from_json(self.DEVICE, content)
 
     def test_non_object_entry_fails(self):
         content = json.dumps({"downloads": ["x"]})
-        with self.assertRaisesRegex(ValueError, "Ungültiger JSON-Eintrag"):
+        with self.assertRaisesRegex(ValueError, "Invalid JSON entry"):
             fw.versions_from_json(self.DEVICE, content)
 
 
@@ -77,18 +77,18 @@ class JsonValueExtractionTests(unittest.TestCase):
 
     def test_invalid_value_fails(self):
         device = {"value_path": ["version"]}
-        with self.assertRaisesRegex(ValueError, "Versionsfeld"):
+        with self.assertRaisesRegex(ValueError, "Version field"):
             fw.versions_from_json_value(device, json.dumps({"version": "   "}))
 
 
 class ExtractDispatchTests(unittest.TestCase):
     def test_unknown_source_type(self):
-        with self.assertRaisesRegex(ValueError, "Unbekannter Quelltyp: html"):
+        with self.assertRaisesRegex(ValueError, "Unknown source type: html"):
             fw.extract_versions("html", "x", {})
 
     def test_empty_result_is_error(self):
         device = {"version_pattern": r"v[0-9]+"}
-        with self.assertRaisesRegex(ValueError, "Keine Versionen gefunden"):
+        with self.assertRaisesRegex(ValueError, "No versions found; stored state remains unchanged"):
             fw.extract_versions("text", "keine Treffer", device)
 
     def test_sorted_list(self):
@@ -118,7 +118,7 @@ class CompareTests(unittest.TestCase):
         self.assertEqual(new, ["c"])
 
     def test_invalid_stored_state_fails(self):
-        with self.assertRaisesRegex(ValueError, "Ungültiger gespeicherter Versionsstand"):
+        with self.assertRaisesRegex(ValueError, "Invalid stored version state"):
             fw.compare_versions(["a"], {"known_versions": [1, 2]})
 
 
@@ -144,48 +144,48 @@ class SourceValidationTests(unittest.TestCase):
                 "source_url": "https://example.com",
                 "version_pattern": r"v[0-9]+",
             },
-            "Gerät 'x'",
+            "Device 'x'",
         )
 
     def test_unknown_source_type(self):
-        with self.assertRaisesRegex(ValueError, "Unbekannter Quelltyp"):
+        with self.assertRaisesRegex(ValueError, "Unknown source type"):
             fw.validate_source_config(
-                {"source_type": "html", "source_url": "https://example.com"}, "Gerät 'x'"
+                {"source_type": "html", "source_url": "https://example.com"}, "Device 'x'"
             )
 
     def test_invalid_url(self):
-        with self.assertRaisesRegex(ValueError, "Ungültige Quell-URL"):
+        with self.assertRaisesRegex(ValueError, "Invalid source URL"):
             fw.validate_source_config(
                 {"source_type": "text", "source_url": "kein-url", "version_pattern": "x"},
-                "Gerät 'x'",
+                "Device 'x'",
             )
 
     def test_missing_pattern(self):
         with self.assertRaisesRegex(ValueError, "version_pattern"):
             fw.validate_source_config(
-                {"source_type": "text", "source_url": "https://example.com"}, "Gerät 'x'"
+                {"source_type": "text", "source_url": "https://example.com"}, "Device 'x'"
             )
 
     def test_invalid_regex(self):
-        with self.assertRaisesRegex(ValueError, "regulärer Ausdruck"):
+        with self.assertRaisesRegex(ValueError, "Invalid regular expression"):
             fw.validate_source_config(
                 {"source_type": "text", "source_url": "https://example.com", "version_pattern": "("},
-                "Gerät 'x'",
+                "Device 'x'",
             )
 
     def test_two_groups_rejected(self):
-        with self.assertRaisesRegex(ValueError, "Klammergruppe"):
+        with self.assertRaisesRegex(ValueError, "capturing group"):
             fw.validate_source_config(
                 {
                     "source_type": "text",
                     "source_url": "https://example.com",
                     "version_pattern": "(a)(b)",
                 },
-                "Gerät 'x'",
+                "Device 'x'",
             )
 
     def test_unknown_encoding(self):
-        with self.assertRaisesRegex(ValueError, "Zeichensatz"):
+        with self.assertRaisesRegex(ValueError, "Unknown charset"):
             fw.validate_source_config(
                 {
                     "source_type": "text",
@@ -193,21 +193,21 @@ class SourceValidationTests(unittest.TestCase):
                     "version_pattern": "x",
                     "encoding": "nope-nope",
                 },
-                "Gerät 'x'",
+                "Device 'x'",
             )
 
     def test_json_keys_required(self):
         with self.assertRaisesRegex(ValueError, "items_key"):
             fw.validate_source_config(
                 {"source_type": "json", "source_url": "https://example.com", "version_key": "v"},
-                "Gerät 'x'",
+                "Device 'x'",
             )
 
     def test_json_value_path_required(self):
         with self.assertRaisesRegex(ValueError, "value_path"):
             fw.validate_source_config(
                 {"source_type": "json_value", "source_url": "https://example.com", "value_path": []},
-                "Gerät 'x'",
+                "Device 'x'",
             )
 
 
@@ -226,11 +226,12 @@ class ProfileResolutionTests(unittest.TestCase):
 
     def _profile(self, **overrides):
         profile = {
-            "schema_version": 1,
+            "schema_version": 2,
             "id": "coros.dura",
             "name": "COROS DURA – Firmware",
             "manufacturer": "COROS",
             "model": "DURA",
+            "category": "firmware",
             "source_type": "text",
             "source_url": "https://example.com/coros",
             "version_pattern": r"\bV\s*([0-9]+(?:\.[0-9]+){2,3})\b",
@@ -246,13 +247,14 @@ class ProfileResolutionTests(unittest.TestCase):
         self.assertEqual(resolved["source_type"], "text")
         self.assertEqual(resolved["version_pattern"], r"\bV\s*([0-9]+(?:\.[0-9]+){2,3})\b")
         self.assertEqual(resolved["manufacturer"], "COROS")
+        self.assertEqual(resolved["category"], "firmware")
 
     def test_local_name_overrides_profile_name(self):
         self._write_profile(self._profile())
         resolved = fw.resolve_device(
-            {"id": "coros-dura", "profile": "coros.dura", "name": "Mein Gerät"}, self.profiles_dir
+            {"id": "coros-dura", "profile": "coros.dura", "name": "My Device"}, self.profiles_dir
         )
-        self.assertEqual(resolved["name"], "Mein Gerät")
+        self.assertEqual(resolved["name"], "My Device")
 
     def test_profile_name_used_without_local_name(self):
         self._write_profile(self._profile())
@@ -261,8 +263,8 @@ class ProfileResolutionTests(unittest.TestCase):
 
     def test_local_id_is_preserved(self):
         self._write_profile(self._profile())
-        resolved = fw.resolve_device({"id": "meine-id", "profile": "coros.dura"}, self.profiles_dir)
-        self.assertEqual(resolved["id"], "meine-id")
+        resolved = fw.resolve_device({"id": "my-id", "profile": "coros.dura"}, self.profiles_dir)
+        self.assertEqual(resolved["id"], "my-id")
         self.assertEqual(resolved["profile"], "coros.dura")
 
     def test_input_device_is_not_mutated(self):
@@ -272,59 +274,59 @@ class ProfileResolutionTests(unittest.TestCase):
         self.assertEqual(device, {"id": "coros-dura", "profile": "coros.dura"})
 
     def test_technical_field_not_allowed(self):
-        with self.assertRaisesRegex(ValueError, "Unerlaubte Felder"):
+        with self.assertRaisesRegex(ValueError, "Disallowed fields"):
             fw.resolve_device(
                 {"id": "x", "profile": "coros.dura", "source_url": "https://example.com"},
                 self.profiles_dir,
             )
 
     def test_missing_profile_file(self):
-        with self.assertRaisesRegex(ValueError, "nicht lesbar"):
+        with self.assertRaisesRegex(ValueError, "not readable"):
             fw.resolve_device({"id": "x", "profile": "coros.dura"}, self.profiles_dir)
 
     def test_invalid_json_profile(self):
         (self.profiles_dir / "coros.dura.json").write_text("{ nicht json", encoding="utf-8")
-        with self.assertRaisesRegex(ValueError, "Ungültiges JSON"):
+        with self.assertRaisesRegex(ValueError, "Invalid JSON"):
             fw.resolve_device({"id": "x", "profile": "coros.dura"}, self.profiles_dir)
 
     def test_profile_not_object(self):
         (self.profiles_dir / "coros.dura.json").write_text("[]", encoding="utf-8")
-        with self.assertRaisesRegex(ValueError, "kein JSON-Objekt"):
+        with self.assertRaisesRegex(ValueError, "not a JSON object"):
             fw.resolve_device({"id": "x", "profile": "coros.dura"}, self.profiles_dir)
 
     def test_unsupported_schema_version(self):
-        self._write_profile(self._profile(schema_version=2))
-        with self.assertRaisesRegex(ValueError, "Schema-Version"):
+        self._write_profile(self._profile(schema_version=1))
+        with self.assertRaisesRegex(ValueError, "schema version"):
             fw.resolve_device({"id": "x", "profile": "coros.dura"}, self.profiles_dir)
 
     def test_boolean_schema_version_rejected(self):
         profile = self._profile()
         profile["schema_version"] = True
         self._write_profile(profile)
-        with self.assertRaisesRegex(ValueError, "Schema-Version"):
+        with self.assertRaisesRegex(ValueError, "schema version"):
             fw.resolve_device({"id": "x", "profile": "coros.dura"}, self.profiles_dir)
 
     def test_mismatched_profile_id(self):
         profile = self._profile()
         profile["id"] = "other"
         self._write_profile(profile, filename="coros.dura.json")
-        with self.assertRaisesRegex(ValueError, "stimmt nicht"):
+        with self.assertRaisesRegex(ValueError, "does not match"):
             fw.resolve_device({"id": "x", "profile": "coros.dura"}, self.profiles_dir)
 
     def test_invalid_profile_id_pattern(self):
-        with self.assertRaisesRegex(ValueError, "Ungültige Profil-ID"):
+        with self.assertRaisesRegex(ValueError, "Invalid profile ID"):
             fw.resolve_device({"id": "x", "profile": "../evil"}, self.profiles_dir)
 
     def test_symlink_outside_profiles_dir_is_rejected(self):
         outside = Path(self._tmp.name) / "outside.json"
         outside.write_text(json.dumps(self._profile()), encoding="utf-8")
         (self.profiles_dir / "coros.dura.json").symlink_to(outside)
-        with self.assertRaisesRegex(ValueError, "außerhalb"):
+        with self.assertRaisesRegex(ValueError, "outside"):
             fw.resolve_device({"id": "x", "profile": "coros.dura"}, self.profiles_dir)
 
     def test_invalid_profile_source_config(self):
         self._write_profile(self._profile(version_pattern="(a)(b)"))
-        with self.assertRaisesRegex(ValueError, "Klammergruppe"):
+        with self.assertRaisesRegex(ValueError, "capturing group"):
             fw.resolve_device({"id": "x", "profile": "coros.dura"}, self.profiles_dir)
 
     def test_direct_entry_without_profiles_dir(self):
@@ -349,7 +351,7 @@ class ProfileResolutionTests(unittest.TestCase):
                 {"id": "coros-dura", "profile": "coros.dura"},
                 {
                     "id": "direct",
-                    "name": "Direkt",
+                    "name": "Direct",
                     "source_type": "json_value",
                     "source_url": "https://example.com/direct",
                     "value_path": ["data", "version"],
@@ -364,14 +366,22 @@ class ProfileResolutionTests(unittest.TestCase):
         self._write_profile(self._profile())
         resolved = fw.resolve_devices(
             [
-                {"id": "gerät-a", "profile": "coros.dura"},
-                {"id": "gerät-b", "profile": "coros.dura"},
+                {"id": "device-a", "profile": "coros.dura"},
+                {"id": "device-b", "profile": "coros.dura"},
             ],
             self.profiles_dir,
         )
-        self.assertEqual(resolved[0]["id"], "gerät-a")
-        self.assertEqual(resolved[1]["id"], "gerät-b")
+        self.assertEqual(resolved[0]["id"], "device-a")
+        self.assertEqual(resolved[1]["id"], "device-b")
         self.assertIsNot(resolved[0], resolved[1])
+
+    def test_missing_category_is_rejected(self):
+        self._write_profile(self._profile(category=None))
+        del self._profile()["category"]  # noqa: B018 – just to keep linters quiet, replaced below
+        profile = {k: v for k, v in self._profile().items() if k != "category"}
+        self._write_profile(profile)
+        with self.assertRaisesRegex(ValueError, "category"):
+            fw.resolve_device({"id": "x", "profile": "coros.dura"}, self.profiles_dir)
 
 
 class CliTests(unittest.TestCase):
@@ -395,12 +405,13 @@ class CliTests(unittest.TestCase):
 
     def _profile(self, **overrides):
         profile = {
-            "schema_version": 1,
+            "schema_version": 2,
             "id": "coros.dura",
             "name": "COROS DURA – Firmware",
             "source_type": "text",
             "source_url": "https://example.com/coros",
             "version_pattern": r"\bV\s*([0-9]+(?:\.[0-9]+){2,3})\b",
+            "category": "firmware",
         }
         profile.update(overrides)
         return profile
@@ -428,7 +439,7 @@ class CliTests(unittest.TestCase):
 
     def _run_status(self):
         out, err = io.StringIO(), io.StringIO()
-        with mock.patch.object(fw, "fetch_source", side_effect=AssertionError("kein Netz")):
+        with mock.patch.object(fw, "fetch_source", side_effect=AssertionError("no network")):
             with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
                 code = fw.main(self._args(["--status"]))
         return code, out.getvalue(), err.getvalue()
@@ -438,7 +449,7 @@ class CliTests(unittest.TestCase):
             [
                 {
                     "id": "d1",
-                    "name": "Gerät",
+                    "name": "Device",
                     "source_type": "text",
                     "source_url": "https://example.com/u1",
                     "version_pattern": r"v[0-9]+",
@@ -447,18 +458,18 @@ class CliTests(unittest.TestCase):
         )
         code, out, _ = self._run({"https://example.com/u1": "v1 v2"})
         self.assertEqual(code, 0)
-        self.assertIn("Ausgangsstand (2): v1, v2", out)
+        self.assertIn("Baseline (2): v1, v2", out)
         self.assertEqual(
             json.loads(self.state_path.read_text())["devices"]["d1"]["known_versions"], ["v1", "v2"]
         )
 
         code, out, _ = self._run({"https://example.com/u1": "v1 v2"})
         self.assertEqual(code, 0)
-        self.assertIn("keine Änderung", out)
+        self.assertIn("no changes", out)
 
         code, out, _ = self._run({"https://example.com/u1": "v1 v2 v3"})
         self.assertEqual(code, 0)
-        self.assertIn("neu: v3", out)
+        self.assertIn("new: v3", out)
         self.assertEqual(
             json.loads(self.state_path.read_text())["devices"]["d1"]["known_versions"],
             ["v1", "v2", "v3"],
@@ -482,10 +493,10 @@ class CliTests(unittest.TestCase):
             ]
         )
         code, out, err = self._run(
-            {"https://example.com/bad": "nichts", "https://example.com/good": "v1"}
+            {"https://example.com/bad": "nothing", "https://example.com/good": "v1"}
         )
         self.assertEqual(code, 1)
-        self.assertIn("Prüffehler:", err)
+        self.assertIn("Check error:", err)
         self.assertIn("good", out)
         saved = json.loads(self.state_path.read_text())["devices"]
         self.assertIn("good", saved)
@@ -510,20 +521,21 @@ class CliTests(unittest.TestCase):
         )
         code, out, err = self._run({})
         self.assertEqual(code, 1)
-        self.assertIn("Konfigurationsfehler:", err)
+        self.assertIn("Configuration error:", err)
         self.assertFalse(self.state_path.exists())
 
     def test_missing_devices_file_is_config_error(self):
         code, out, err = self._run({})
         self.assertEqual(code, 1)
-        self.assertIn("Konfigurationsfehler:", err)
+        self.assertIn("Configuration error:", err)
+        self.assertFalse(self.state_path.exists())
 
     def test_status_shows_last_check_and_latest_version(self):
         self._write_devices(
             [
                 {
                     "id": "d1",
-                    "name": "Gerät",
+                    "name": "Device",
                     "source_type": "text",
                     "source_url": "https://example.com/u1",
                     "version_pattern": r"v[0-9]+",
@@ -534,7 +546,7 @@ class CliTests(unittest.TestCase):
         code, out, err = self._run_status()
         self.assertEqual(code, 0)
         self.assertEqual(err, "")
-        self.assertIn("Letzte Version", out)
+        self.assertIn("Last version", out)
         self.assertIn("v2", out)
         stored = json.loads(self.state_path.read_text())["devices"]["d1"]["last_checked"]
         self.assertIn(stored[:10], out)
@@ -544,7 +556,7 @@ class CliTests(unittest.TestCase):
             [
                 {
                     "id": "d1",
-                    "name": "Gerät",
+                    "name": "Device",
                     "source_type": "text",
                     "source_url": "https://example.com/u1",
                     "version_pattern": r"v[0-9]+",
@@ -553,7 +565,7 @@ class CliTests(unittest.TestCase):
         )
         code, out, err = self._run_status()
         self.assertEqual(code, 0)
-        self.assertIn("nie geprüft", out)
+        self.assertIn("never checked", out)
         self.assertFalse(self.state_path.exists())
 
     def test_check_and_status_are_mutually_exclusive(self):
@@ -567,7 +579,7 @@ class CliTests(unittest.TestCase):
         self._write_devices([{"id": "coros-dura", "profile": "coros.dura"}])
         code, out, err = self._run({"https://example.com/coros": "V 3.0910.0 V 3.0808.0"})
         self.assertEqual(code, 0)
-        self.assertIn("Ausgangsstand (2): 3.0808.0, 3.0910.0", out)
+        self.assertIn("Baseline (2): 3.0808.0, 3.0910.0", out)
         self.assertEqual(
             json.loads(self.state_path.read_text())["devices"]["coros-dura"]["known_versions"],
             ["3.0808.0", "3.0910.0"],
@@ -591,7 +603,7 @@ class CliTests(unittest.TestCase):
         self._write_devices([{"id": "coros-dura", "profile": "coros.dura"}])
         code, out, _ = self._run({"https://example.com/coros": "V 3.0910.0 V 3.0808.0"})
         self.assertEqual(code, 0)
-        self.assertIn("neu: 3.0910.0", out)
+        self.assertIn("new: 3.0910.0", out)
 
     def test_status_with_profiles_does_not_fetch(self):
         self._write_profile(self._profile())
@@ -600,14 +612,14 @@ class CliTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(err, "")
         self.assertIn("COROS DURA", out)
-        self.assertIn("nie geprüft", out)
+        self.assertIn("never checked", out)
 
     def test_invalid_profile_prevents_check_and_state_change(self):
-        self._write_profile(self._profile(schema_version=2))
+        self._write_profile(self._profile(schema_version=1))
         self._write_devices([{"id": "coros-dura", "profile": "coros.dura"}])
         code, out, err = self._run({"https://example.com/coros": "V 3.0910.0"})
         self.assertEqual(code, 1)
-        self.assertIn("Konfigurationsfehler:", err)
+        self.assertIn("Configuration error:", err)
         self.assertFalse(self.state_path.exists())
 
     def test_config_error_does_not_fetch(self):
@@ -622,17 +634,17 @@ class CliTests(unittest.TestCase):
             ]
         )
         out, err = io.StringIO(), io.StringIO()
-        with mock.patch.object(fw, "fetch_source", side_effect=AssertionError("kein Netz")):
+        with mock.patch.object(fw, "fetch_source", side_effect=AssertionError("no network")):
             with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
                 code = fw.main(self._args())
         self.assertEqual(code, 1)
-        self.assertIn("Konfigurationsfehler:", err.getvalue())
+        self.assertIn("Configuration error:", err.getvalue())
 
     def test_custom_profiles_dir_is_used(self):
-        other = self.root / "andere-profile"
+        other = self.root / "other-profiles"
         other.mkdir()
         (other / "coros.dura.json").write_text(
-            json.dumps(self._profile(source_url="https://example.com/andere")), encoding="utf-8"
+            json.dumps(self._profile(source_url="https://example.com/other")), encoding="utf-8"
         )
         self._write_devices([{"id": "coros-dura", "profile": "coros.dura"}])
         out, err = io.StringIO(), io.StringIO()
@@ -648,7 +660,7 @@ class CliTests(unittest.TestCase):
             with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
                 code = fw.main(args)
         self.assertEqual(code, 0)
-        self.assertIn("Ausgangsstand", out.getvalue())
+        self.assertIn("Baseline", out.getvalue())
 
     def test_default_profiles_dir_without_option(self):
         args = ["--devices", str(self.devices_path), "--state", str(self.state_path)]
@@ -660,7 +672,7 @@ class CliTests(unittest.TestCase):
             [
                 {
                     "id": "direct",
-                    "name": "Direkt",
+                    "name": "Direct",
                     "source_type": "text",
                     "source_url": "https://example.com/direct",
                     "version_pattern": r"v[0-9]+",
@@ -673,7 +685,7 @@ class CliTests(unittest.TestCase):
             with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
                 code = fw.main(args)
         self.assertEqual(code, 0)
-        self.assertIn("Ausgangsstand (2): v1, v2", out.getvalue())
+        self.assertIn("Baseline (2): v1, v2", out.getvalue())
 
 
 class SuggestProfileIdTests(unittest.TestCase):
@@ -704,7 +716,7 @@ class AnalyzeExampleTests(unittest.TestCase):
         self.assertEqual(shape, fw.ExampleShape(prefix="", left_blocks=2, right_blocks=2, separator="/"))
 
     def test_unsupported_format(self):
-        self.assertIsNone(fw.analyze_example("keine Version"))
+        self.assertIsNone(fw.analyze_example("no version"))
         self.assertIsNone(fw.analyze_example("1.2 und 3.4"))
 
 
@@ -772,12 +784,12 @@ class PatternProcessTests(unittest.TestCase):
     def test_two_capture_groups_are_rejected(self):
         result = fw.test_pattern("ab", "(a)(b)")
         self.assertFalse(result.ok)
-        self.assertIn("Klammergruppe", result.message)
+        self.assertIn("capturing group", result.message)
 
     def test_invalid_regex_is_rejected(self):
         result = fw.test_pattern("ab", "(")
         self.assertFalse(result.ok)
-        self.assertIn("regulärer Ausdruck", result.message)
+        self.assertIn("Invalid regular expression", result.message)
 
     def test_empty_result_is_rejected(self):
         result = fw.test_pattern("abc", r"zzz([0-9]+)")
@@ -786,7 +798,7 @@ class PatternProcessTests(unittest.TestCase):
     def test_timeout_terminates_child_process(self):
         result = fw.test_pattern("a" * 40 + "c", r"(a+)+b", timeout=1.0)
         self.assertFalse(result.ok)
-        self.assertIn("Zeitlimit", result.message)
+        self.assertIn("Time limit exceeded", result.message)
 
 
 class ExportProfileTests(unittest.TestCase):
@@ -798,12 +810,13 @@ class ExportProfileTests(unittest.TestCase):
 
     def _profile(self, **overrides):
         profile = {
-            "schema_version": 1,
+            "schema_version": 2,
             "id": "coros.dura",
             "name": "COROS DURA – Firmware",
             "source_type": "text",
             "source_url": "https://example.com/coros",
             "version_pattern": r"\bV\s*([0-9]+(?:\.[0-9]+){2,3})\b",
+            "category": "firmware",
         }
         profile.update(overrides)
         return profile
@@ -819,13 +832,13 @@ class ExportProfileTests(unittest.TestCase):
         path = fw.export_profile(self._profile(), self.profiles_dir)
         original = path.read_text(encoding="utf-8")
         with self.assertRaises(fw.ProfileExistsError):
-            fw.export_profile(self._profile(name="Anders"), self.profiles_dir)
+            fw.export_profile(self._profile(name="Different"), self.profiles_dir)
         self.assertEqual(path.read_text(encoding="utf-8"), original)
 
     def test_overwrite_replaces_atomically(self):
         path = fw.export_profile(self._profile(), self.profiles_dir)
-        fw.export_profile(self._profile(name="Neu"), self.profiles_dir, overwrite=True)
-        self.assertIn("Neu", path.read_text(encoding="utf-8"))
+        fw.export_profile(self._profile(name="New"), self.profiles_dir, overwrite=True)
+        self.assertIn("New", path.read_text(encoding="utf-8"))
         self.assertFalse(path.with_name(path.name + ".tmp").exists())
 
     def test_write_error_keeps_existing_file_and_cleans_temp(self):
@@ -833,7 +846,7 @@ class ExportProfileTests(unittest.TestCase):
         original = path.read_text(encoding="utf-8")
         with mock.patch("firmaware.json.dump", side_effect=OSError("boom")):
             with self.assertRaises(OSError):
-                fw.export_profile(self._profile(name="Kaputt"), self.profiles_dir, overwrite=True)
+                fw.export_profile(self._profile(name="Broken"), self.profiles_dir, overwrite=True)
         self.assertEqual(path.read_text(encoding="utf-8"), original)
         self.assertFalse(path.with_name(path.name + ".tmp").exists())
 
@@ -876,16 +889,17 @@ class ProfileAssistantCliTests(unittest.TestCase):
 
     def test_happy_path_exports_usable_profile(self):
         answers = [
-            "COROS",                     # Hersteller
-            "DURA",                      # Modell
-            "",                          # Anzeigename (Vorschlag)
-            "",                          # Profil-ID (Vorschlag coros.dura)
+            "COROS",                     # Manufacturer
+            "DURA",                      # Model
+            "",                          # Display name (suggestion)
+            "",                          # Profile ID (suggestion coros.dura)
+            "firmware",                  # Category
             "https://example.com/releases",
-            "V 3.0910.0",                # Beispielversion
-            "j",                         # Fundstelle bestätigen
-            "1",                         # Kandidat wählen
-            "n",                         # nicht erneut abrufen
-            "j",                         # speichern
+            "V 3.0910.0",                # Example version
+            "y",                         # Confirm occurrence
+            "1",                         # Choose candidate
+            "n",                         # do not re-fetch
+            "y",                         # save
         ]
         out, err = io.StringIO(), io.StringIO()
         with mock.patch.object(
@@ -898,27 +912,29 @@ class ProfileAssistantCliTests(unittest.TestCase):
         path = self.profiles_dir / "coros.dura.json"
         self.assertTrue(path.exists())
         data = json.loads(path.read_text(encoding="utf-8"))
-        self.assertEqual(data["schema_version"], 1)
+        self.assertEqual(data["schema_version"], 2)
         self.assertEqual(data["id"], "coros.dura")
         self.assertEqual(data["source_type"], "text")
         self.assertEqual(data["version_pattern"], r"\bV\s*([0-9]+(?:\.[0-9]+){2})(?![0-9.])")
         self.assertEqual(data["manufacturer"], "COROS")
-        # Exportiertes JSON ist mit dem vorhandenen Resolver nutzbar.
+        self.assertEqual(data["category"], "firmware")
+        # Exported JSON is usable with the existing resolver.
         fw.load_profile("coros.dura", self.profiles_dir)
 
     def test_unsupported_format_can_be_corrected(self):
         content = "Firmware 1.2 und 3.4 sowie V 3.0910.0"
         answers = [
             "COROS", "DURA", "", "",
+            "firmware",                  # Category
             "https://example.com/releases",
-            "1.2 und 3.4",  # von den Vorlagen nicht unterstützt
-            "j",            # Fundstelle bestätigen
-            "w",            # erneut eingeben
-            "V 3.0910.0",   # unterstütztes Format
-            "j",            # Fundstelle bestätigen
-            "1",            # Kandidat
-            "n",            # nicht erneut abrufen
-            "j",            # speichern
+            "1.2 und 3.4",  # not supported by templates
+            "y",            # confirm occurrence
+            "w",            # re-enter
+            "V 3.0910.0",   # supported format
+            "y",            # confirm occurrence
+            "1",            # candidate
+            "n",            # do not re-fetch
+            "y",            # save
         ]
         out, err = io.StringIO(), io.StringIO()
         with mock.patch.object(fw, "fetch_document", return_value=self._document(content)):
@@ -928,13 +944,15 @@ class ProfileAssistantCliTests(unittest.TestCase):
         self.assertEqual(code, 0, err.getvalue() + out.getvalue())
         data = json.loads((self.profiles_dir / "coros.dura.json").read_text(encoding="utf-8"))
         self.assertIn("V", data["version_pattern"])
+        self.assertEqual(data["category"], "firmware")
 
     def test_abort_creates_no_profile(self):
         answers = [
             "COROS", "DURA", "", "",
+            "firmware",                  # Category
             "https://example.com/releases",
-            "nicht vorhanden",   # Beispiel ohne Fundstelle
-            "a",                  # abbrechen
+            "not present",   # example without occurrence
+            "a",              # abort
         ]
         err = io.StringIO()
         with mock.patch.object(fw, "fetch_document", return_value=self._document("V 3.0910.0")):
@@ -950,28 +968,29 @@ class ProfileAssistantCliTests(unittest.TestCase):
             with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
                 code = fw.main(["--create-profile", "--profiles-dir", str(self.profiles_dir)])
         self.assertEqual(code, 1)
-        self.assertIn("Eingabeende", err.getvalue())
+        self.assertIn("end of input", err.getvalue())
         self.assertFalse((self.profiles_dir / "coros.dura.json").exists())
 
     def test_explicit_encoding_is_exported(self):
         answers = [
             "Shelly", "1", "", "",
+            "firmware",                  # Category
             "https://example.com/fw",
-            "z",              # Zeichensatz wählen
-            "latin-1",        # Zeichensatz
-            "",               # URL erneut (Vorschlag)
-            "v1.2.3",         # Beispiel
-            "j",              # Fundstelle
-            "1",              # Kandidat
-            "n",              # nicht erneut abrufen
-            "j",              # speichern
+            "c",              # choose charset
+            "latin-1",        # charset
+            "",               # URL again (suggestion)
+            "v1.2.3",         # example
+            "y",              # occurrence
+            "1",              # candidate
+            "n",              # do not re-fetch
+            "y",              # save
         ]
         attempts = []
 
         def fake_fetch(url, encoding=None):
             attempts.append(encoding)
             if len(attempts) == 1:
-                raise fw.FirmwareSourceError("Dekodierung mit 'utf-8' fehlgeschlagen")
+                raise fw.FirmwareSourceError("Decoding with 'utf-8' failed")
             return fw.FetchedDocument(
                 text="Firmware v1.2.3",
                 status=200,
@@ -989,6 +1008,7 @@ class ProfileAssistantCliTests(unittest.TestCase):
         self.assertEqual(code, 0, err.getvalue() + out.getvalue())
         data = json.loads((self.profiles_dir / "shelly.1.json").read_text(encoding="utf-8"))
         self.assertEqual(data["encoding"], "latin-1")
+        self.assertEqual(data["category"], "firmware")
 
 
 if __name__ == "__main__":

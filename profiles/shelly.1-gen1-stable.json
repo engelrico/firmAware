@@ -1,9 +1,10 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "id": "shelly.1-gen1-stable",
-  "name": "Shelly 1 Gen1 – stabile Firmware",
+  "name": "Shelly 1 Gen1 – stable firmware",
   "manufacturer": "Shelly",
   "model": "Shelly 1 Gen1",
+  "category": "firmware",
   "source_type": "json_value",
   "source_url": "https://api.shelly.cloud/files/firmware",
   "value_path": [

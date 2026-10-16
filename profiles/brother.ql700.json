@@ -1,9 +1,10 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "id": "brother.ql700",
-  "name": "Brother QL-700 – Software",
+  "name": "Brother QL-700 – Firmware",
   "manufacturer": "Brother",
   "model": "QL-700",
+  "category": "firmware",
   "source_type": "text",
   "source_url": "https://support.brother.com/g/b/downloadlist.aspx?c=de&lang=de&prod=lpql700euk&os=10010",
   "version_pattern": "(?i)Drucker\\s+Treiber(?:(?!</tr\\b)[\\s\\S])*?<em>\\s*[0-9]{2}\\.[0-9]{2}\\.[0-9]{4}\\s*<br\\s*/?>\\s*\\(\\s*([0-9]+(?:\\.[0-9]+)+[a-z]?)\\s*\\)"

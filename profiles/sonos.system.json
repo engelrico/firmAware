@@ -1,9 +1,10 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "id": "sonos.system",
-  "name": "Sonos – Systemupdates für Move und Arc",
+  "name": "Sonos – System updates for Move and Arc",
   "manufacturer": "Sonos",
-  "model": "Move und Arc",
+  "model": "Move and Arc",
+  "category": "firmware",
   "source_type": "text",
   "source_url": "https://support.sonos.com/en/article/release-notes-sonos-system-updates",
   "version_pattern": "\\b([0-9]{2,3}\\.[0-9]+-[0-9]{4,6})\\b"

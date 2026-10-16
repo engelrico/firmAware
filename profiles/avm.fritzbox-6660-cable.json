@@ -1,9 +1,10 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "id": "avm.fritzbox-6660-cable",
   "name": "FRITZ!Box 6660 Cable – FRITZ!OS",
   "manufacturer": "AVM",
   "model": "FRITZ!Box 6660 Cable",
+  "category": "firmware",
   "source_type": "text",
   "source_url": "https://download.avm.de/fritzbox/fritzbox-6660-cable/deutschland/fritz.os/info_en.txt",
   "encoding": "cp1252",

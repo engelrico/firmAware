@@ -1,9 +1,10 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "id": "raspberrypi.os-32bit",
-  "name": "Raspberry Pi OS – 32-Bit Desktop",
+  "name": "Raspberry Pi OS – 32-bit Desktop",
   "manufacturer": "Raspberry Pi Foundation",
-  "model": "Raspberry Pi OS 32-Bit Desktop",
+  "model": "Raspberry Pi OS 32-bit Desktop",
+  "category": "operating_system",
   "source_type": "text",
   "source_url": "https://downloads.raspberrypi.com/raspios_armhf/release_notes.txt",
   "encoding": "utf-8",

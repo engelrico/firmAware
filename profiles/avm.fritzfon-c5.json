@@ -1,9 +1,10 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "id": "avm.fritzfon-c5",
   "name": "FRITZ!Fon C5 – Firmware",
   "manufacturer": "AVM",
   "model": "FRITZ!Fon C5",
+  "category": "firmware",
   "source_type": "text",
   "source_url": "https://download.avm.de/fritzfon/fritzfon-c5/deutschland/fritz.os/info_de.txt",
   "encoding": "cp1252",
