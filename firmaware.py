@@ -565,13 +565,14 @@ def print_status(devices: Sequence[Mapping[str, Any]], state: Mapping[str, Any])
             versions = entry.get("known_versions") or []
             rows.append(
                 (
+                    device["id"],
                     display_name(device),
                     format_timestamp(entry.get("last_checked")),
                     max(versions, key=version_sort_key) if versions else "–",
                 )
             )
 
-        headers = ("Entry", "Last check", "Last version")
+        headers = ("ID", "Entry", "Last check", "Last version")
         if rows:
             widths = [max(len(headers[i]), *(len(row[i]) for row in rows)) for i in range(len(headers))]
         else:
@@ -1269,6 +1270,13 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         metavar="PATH",
         help="Directory with device profiles (default: ./profiles next to the script)",
     )
+    parser.add_argument(
+        "--device",
+        "-d",
+        type=str,
+        metavar="ID",
+        help="Check or show only the entry with this ID",
+    )
     return parser.parse_args(argv)
 
 
@@ -1297,6 +1305,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (OSError, ValueError, KeyError, TypeError) as error:
         print(f"Configuration error: {error}", file=sys.stderr)
         return 1
+
+    if args.device:
+        matching = [device for device in devices if device["id"] == args.device]
+        if not matching:
+            print(f"Configuration error: No entry with ID '{args.device}'", file=sys.stderr)
+            return 1
+        devices = matching
 
     if args.status:
         print_status(devices, state)
