@@ -1277,6 +1277,13 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         metavar="ID",
         help="Check or show only the entry with this ID",
     )
+    parser.add_argument(
+        "device_id",
+        type=str,
+        metavar="ID",
+        nargs="?",
+        help="ID of the entry to check or show (shortcut for --device)",
+    )
     return parser.parse_args(argv)
 
 
@@ -1305,6 +1312,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (OSError, ValueError, KeyError, TypeError) as error:
         print(f"Configuration error: {error}", file=sys.stderr)
         return 1
+
+    if args.device_id and not args.device:
+        args.device = args.device_id
 
     if args.device:
         matching = [device for device in devices if device["id"] == args.device]
