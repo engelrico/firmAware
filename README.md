@@ -226,8 +226,9 @@ firmAware/
 
 - No automatic scheduling and no long-running background service.
 - No push, email, or MQTT notifications.
-- No semantic version comparison ("higher/lower") and no determination of the
-  latest version.
+- No semantic version comparison ("higher/lower") for upgrade decisions; the
+  displayed "Last version" is the highest detected label using a best-effort
+  numeric sort, not a guarantee that an update is available.
 - No detection of installed device firmware and no automatic installation.
 - No JavaScript execution, authentication, pagination, or bypassing of HTTP
   blocks (e.g. HTTP 403).

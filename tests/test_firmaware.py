@@ -1011,5 +1011,29 @@ class ProfileAssistantCliTests(unittest.TestCase):
         self.assertEqual(data["category"], "firmware")
 
 
+class VersionSortKeyTests(unittest.TestCase):
+    def test_numeric_blocks_are_compared_as_integers(self):
+        self.assertLess(fw.version_sort_key("1.9"), fw.version_sort_key("1.10"))
+        self.assertLess(fw.version_sort_key("1.2"), fw.version_sort_key("1.10.0"))
+        self.assertEqual(fw.version_sort_key("1.10"), fw.version_sort_key("1.10"))
+
+    def test_date_like_versions_sort_chronologically(self):
+        self.assertLess(
+            fw.version_sort_key("2013-12-18"), fw.version_sort_key("2014-01-07")
+        )
+        self.assertLess(
+            fw.version_sort_key("2025-05-06"), fw.version_sort_key("2026-10-06")
+        )
+
+    def test_composite_versions_sort_by_blocks(self):
+        self.assertLess(fw.version_sort_key("1.13/1.02"), fw.version_sort_key("1.13/1.03"))
+
+    def test_suffixes_are_handled_best_effort(self):
+        self.assertLess(fw.version_sort_key("6.5.0a"), fw.version_sort_key("6.5.0c"))
+
+    def test_empty_string_sorts_lowest(self):
+        self.assertLess(fw.version_sort_key(""), fw.version_sort_key("1.0"))
+
+
 if __name__ == "__main__":
     sys.exit(unittest.main())

@@ -459,6 +459,22 @@ def name_column_width(devices: Sequence[Mapping[str, Any]]) -> int:
     return max((len(display_name(device)) for device in devices), default=0)
 
 
+def version_sort_key(version: str) -> tuple:
+    """Sort key for version labels: numeric blocks as integers, rest as text.
+
+    Makes ``"1.10"`` sort above ``"1.9"`` and ``"2014-01-07"`` above
+    ``"2013-12-18"`` regardless of the source's ordering.
+    """
+    parts = re.findall(r"[0-9]+|[^0-9]+", version or "")
+    key: list[tuple[int, int, str]] = []
+    for part in parts:
+        if part.isdigit():
+            key.append((0, int(part), ""))
+        else:
+            key.append((1, 0, part))
+    return tuple(key)
+
+
 def check_summary(
     previous: Mapping[str, Any] | None,
     versions: Sequence[str],
@@ -554,7 +570,7 @@ def print_status(devices: Sequence[Mapping[str, Any]], state: Mapping[str, Any])
                 (
                     display_name(device),
                     format_timestamp(entry.get("last_checked")),
-                    versions[-1] if versions else "–",
+                    max(versions, key=version_sort_key) if versions else "–",
                 )
             )
 
