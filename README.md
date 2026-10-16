@@ -63,12 +63,16 @@ python3 firmaware.py --devices /path/devices.json --state /path/state.json
 | `--devices PATH` | Path to `devices.json` (default: next to the script) |
 | `--state PATH` | Path to `state.json` (default: next to the script) |
 | `--profiles-dir PATH` | Directory with device profiles (default: `profiles` next to the script) |
+| `--device ID`, `-d ID` | Check or show only the entry with this ID |
 
 `--check`, `--status`, and `--create-profile` are mutually exclusive.
 Without arguments, `devices.json`, `state.json`, and `profiles/` are looked up
 relative to the directory of the Python file – **not** relative to the current
 working directory. An explicitly relative `--profiles-dir`, however, is resolved
 relative to the current working directory.
+
+A device ID can also be passed as a positional argument after `--check` or
+`--status` (e. g. `python3 firmaware.py --check nanostation-m5-xm`).
 
 Exit codes: `0` success, `1` configuration, check, or storage error,
 `130` abort via `Ctrl+C`.
@@ -115,16 +119,17 @@ Profile-based entries may contain **only** the fields `id`, `profile`, and
 
 ## Device profiles
 
-A profile corresponds to schema version `1`. The file name must match the
+A profile corresponds to schema version `2`. The file name must match the
 profile ID (`<id>.json`). Example `profiles/coros.dura.json`:
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "id": "coros.dura",
   "name": "COROS DURA – Firmware",
   "manufacturer": "COROS",
   "model": "DURA",
+  "category": "firmware",
   "source_type": "text",
   "source_url": "https://support.coros.com/hc/en-us/articles/32924317141652-COROS-DURA-Release-Notes",
   "version_pattern": "\\bV\\s*([0-9]+(?:\\.[0-9]+){2,3})\\b"
@@ -157,7 +162,8 @@ without requiring knowledge of the JSON schema or regular expressions:
 python3 firmaware.py --create-profile --profiles-dir ./profiles
 ```
 
-1. **Describe device:** manufacturer, model, display name, and profile ID.
+1. **Describe device:** manufacturer, model, display name, profile ID, and
+   category (`firmware`, `software`, or `operating_system`).
 2. **Fetch source:** enter an HTTP/HTTPS URL (30 s timeout, 5 MiB limit,
    validation of every redirect target).
 3. **Capture sample version:** a firmware label visible on the page
@@ -191,8 +197,12 @@ tool, not as a publicly reachable URL fetch service.
   lexicographically).
 - The sorting is **not** a semantic version comparison.
 - Versions that have disappeared from the source remain known.
-- Storage is keyed by the **local** device ID, not the profile ID. When
+- Storage is keyed by the **local** entry ID, not the profile ID. When
   switching to a profile, the same local version state is retained.
+
+The `--status` output groups entries by category (Firmware, Software,
+Operating System, Other) and shows an `ID` column per row, so the ID can be
+copied for use with `--device`.
 
 If `state.json` is missing, an empty state is used. The file is written
 atomically via an adjacent `.tmp` file.

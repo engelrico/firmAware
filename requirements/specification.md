@@ -1,7 +1,7 @@
 # firmAware – Spezifikation
 
-Stand: 13. Oktober 2026  
-Version: 0.3 (CLI-Prototyp mit Geräteprofilen und regelbasiertem Profilassistenten)
+Stand: 16. Oktober 2026  
+Version: 0.4 (Schema v2 mit Kategorie, Clustering und Einzelntry-Check)
 
 ## 1. Ziel und Umfang
 
@@ -53,6 +53,8 @@ python3 firmaware.py --create-profile --profiles-dir ./profiles
 ```
 
 `--check`, `--status` und `--create-profile` schließen sich gegenseitig aus. `--profiles-dir PATH` gilt für alle Modi und ist im Erstellungsmodus das Exportverzeichnis. Der Erstellungsmodus verzweigt vor dem Laden von `devices.json` und `state.json`; beide Dateien müssen dafür nicht existieren.
+
+Mit `--device ID` (Kurzform `-d ID`) oder einer ID als positionales Argument nach `--check`/`--status` wird nur der entsprechende Eintrag geprüft bzw. angezeigt. Existiert die ID nicht, tritt ein Konfigurationsfehler auf.
 
 Abweichende Dateipfade:
 
@@ -220,11 +222,12 @@ Beispiel `profiles/coros.dura.json`:
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "id": "coros.dura",
   "name": "COROS DURA – Firmware",
   "manufacturer": "COROS",
   "model": "DURA",
+  "category": "firmware",
   "source_type": "text",
   "source_url": "https://support.coros.com/hc/en-us/articles/32924317141652-COROS-DURA-Release-Notes",
   "version_pattern": "\\bV\\s*([0-9]+(?:\\.[0-9]+){2,3})\\b"
@@ -233,9 +236,10 @@ Beispiel `profiles/coros.dura.json`:
 
 | Feld | Pflicht | Anforderung |
 |---|---|---|
-| `schema_version` | Ja | Ganzzahl, ausschließlich `1`; boolesche Werte unzulässig |
+| `schema_version` | Ja | Ganzzahl, ausschließlich `2`; boolesche Werte unzulässig |
 | `id` | Ja | Gültige Profil-ID; entspricht dem Dateinamen ohne `.json` |
 | `name` | Ja | Nicht leere Zeichenkette |
+| `category` | Ja | `firmware`, `software` oder `operating_system` |
 | `source_type` | Ja | `text`, `json` oder `json_value` |
 | `source_url` | Ja | Nicht leere HTTP-/HTTPS-URL mit Host |
 | `encoding` | Nein | Nicht leere, von Python unterstützte Zeichensatzbezeichnung |
@@ -278,12 +282,13 @@ Beispiel der aufgelösten Konfiguration:
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "id": "coros-dura",
   "profile": "coros.dura",
   "name": "COROS DURA – Firmware",
   "manufacturer": "COROS",
   "model": "DURA",
+  "category": "firmware",
   "source_type": "text",
   "source_url": "https://support.coros.com/hc/en-us/articles/32924317141652-COROS-DURA-Release-Notes",
   "version_pattern": "\\bV\\s*([0-9]+(?:\\.[0-9]+){2,3})\\b"
@@ -399,41 +404,41 @@ Ein neu auftauchender älterer Eintrag wird ebenfalls gemeldet. Änderungen an R
 
 ## 8. Ausgabe und Rückgabecodes
 
-Reguläre Ergebnisse gehen an stdout, Fehler an stderr. Die Ausgabe erfolgt kompakt, eine Zeile pro Gerät, ohne Leerzeilen. Gerätename und Status werden spaltenweise ausgerichtet.
+Reguläre Ergebnisse gehen an stdout, Fehler an stderr. Einträge werden nach Kategorie gruppiert ausgegeben (Firmware, Software, Operating System; unbekannte Kategorien unter „Other"). `--status` zeigt zusätzlich eine ID-Spalte pro Zeile, damit Einträge gezielt mit `--device ID` ausgewählt werden können.
 
-`--check` (Standard) zeigt je Gerät eine Zeile:
+`--check` (Standard) zeigt je Kategorie eine Sektion und je Eintrag eine Zeile:
 
 ```text
-<Gerät>  Ausgangsstand (N): v1, v2, ...   # erste erfolgreiche Prüfung
-<Gerät>  neu: v3, v4                       # neu gefundene Versionen
-<Gerät>  keine Änderung                    # keine neuen Versionen
+<ID>  <Anzeigename>  Ausgangsstand (N): v1, v2, ...   # erste erfolgreiche Prüfung
+<ID>  <Anzeigename>  neu: v3, v4                       # neu gefundene Versionen
+<ID>  <Anzeigename>  keine Änderung                    # keine neuen Versionen
 ```
 
 `--status` gibt den gespeicherten Zustand tabellarisch aus:
 
 ```text
-Gerät    Letzter Check        Letzte Version
--------  -------------------  --------------
-<Gerät>  2026-10-12 19:29:44  RE200(EU)_V4_210916
+ID                            Entry                                    Last check           Last version
+----------------------------  ---------------------------------------  -------------------  --------------------------------
+<ID>                          <Entry>                                  2026-10-12 19:29:44  RE200(EU)_V4_210916
 ```
 
-`Letzte Version` ist die lexikografisch letzte gespeicherte Version (kein fachlicher Versionsvergleich). Noch nie geprüfte Geräte erscheinen mit `nie geprüft` und `–`. Es erfolgt keine Netzabfrage und keine Änderung der Zustandsdatei.
+`Last version` ist die höchste erkannte Version unter Berücksichtigung der Blockanzahl als primäres Kriterium (mehr numerische Blöcke = neueres Format) und numerischem Blockvergleich innerhalb gleicher Blockanzahl (z. B. `1.10` > `1.9`). Noch nie geprüfte Einträge erscheinen mit `never checked` und `–`. Es erfolgt keine Netzabfrage und keine Änderung der Zustandsdatei.
 
 Mögliche Meldungen:
 
 ```text
-Ausgangsstand (N): ...
-neu: ...
-keine Änderung
-Prüffehler: ...
-Konfigurationsfehler: ...
-Speicherfehler: ...
+Baseline (N): ...
+new: ...
+no changes
+Check error: ...
+Configuration error: ...
+Storage error: ...
 ```
 
 Konfigurationsfehler werden vor jeder Netzabfrage erkannt und nennen lokale ID, Profil-ID und gegebenenfalls das Feld:
 
 ```text
-Konfigurationsfehler: Gerät 'coros-dura', Profil 'coros.dura': Pflichtfeld 'version_pattern' fehlt
+Configuration error: Entry 'coros-dura', profile 'coros.dura': Required field 'version_pattern' missing
 ```
 
 | Exit-Code | Bedeutung |
@@ -517,6 +522,11 @@ Live-Verhalten: Die Ubiquiti-JSON-Struktur wurde anhand der vom Nutzer bereitges
 | Ein ungültiges Profil | Keine Prüfung und keine Zustandsänderung |
 | Direkte Konfiguration ohne Profilverzeichnis | Funktioniert |
 | COROS-Extraktion aus Beispieldaten | `["3.0808.0", "3.0910.0"]` |
+| `--device <id>` | Nur dieser eine Eintrag wird geprüft/angezeigt |
+| `--device <id>` nicht existent | Konfigurationsfehler, Exitcode 1 |
+| `--status` ID-Spalte | Jede Zeile zeigt die Entry-ID |
+| Clustering nach Kategorie | Einträge gruppiert unter Firmware, Software, Operating System, Other |
+| Höchste Version anzeigen | `max(versions, key=version_sort_key)` statt letzter sortierter Eintrag |
 
 ## 12. Mögliche nächste Schritte – nicht implementiert
 
@@ -579,15 +589,16 @@ Alle Kandidatentests laufen in einem **separaten Prozess** mit Zeitlimit (3 Seku
 
 Nach Erfolg meldet der Assistent ausdrücklich, dass nur die aktuelle Antwort erfolgreich getestet wurde und zukünftige Seitenänderungen oder Versionsformate nicht geprüft sind. Es werden keine Garantien wie „dauerhaft verifiziert" angegeben.
 
-Das exportierte Profil entspricht Schema-Version 1 und ist mit dem vorhandenen Resolver nutzbar. Beispiel:
+Das exportierte Profil entspricht Schema-Version 2 mit Pflichtfeld `category` und ist mit dem vorhandenen Resolver nutzbar. Beispiel:
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "id": "coros.dura",
   "name": "COROS DURA – Firmware",
   "manufacturer": "COROS",
   "model": "DURA",
+  "category": "firmware",
   "source_type": "text",
   "source_url": "https://example.org/releases",
   "version_pattern": "\\bV\\s*([0-9]+(?:\\.[0-9]+){2,3})\\b"

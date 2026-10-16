@@ -19,6 +19,8 @@ firmAware soll Gerätequellen über wiederverwendbare Geräteprofile konfigurier
 - Alle Konfigurationen vor Netzwerkprüfungen validieren.
 - Geräte-IDs und bestehenden Zustand erhalten.
 - Tests und Dokumentation ergänzen.
+- Einträge nach Kategorie clustern (Firmware, Software, Operating System).
+- Einzelne Einträge mit `--device ID` prüfen oder anzeigen.
 
 ### Nicht Bestandteil
 
@@ -52,11 +54,12 @@ Beispiel `profiles/coros.dura.json`:
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "id": "coros.dura",
   "name": "COROS DURA – Firmware",
   "manufacturer": "COROS",
   "model": "DURA",
+  "category": "firmware",
   "source_type": "text",
   "source_url": "https://support.coros.com/hc/en-us/articles/32924317141652-COROS-DURA-Release-Notes",
   "version_pattern": "\\bV\\s*([0-9]+(?:\\.[0-9]+){2,3})\\b"
@@ -67,9 +70,10 @@ Beispiel `profiles/coros.dura.json`:
 
 | Feld | Pflicht | Anforderung |
 |---|---|---|
-| `schema_version` | Ja | Ganzzahl, ausschließlich `1`; boolesche Werte unzulässig |
+| `schema_version` | Ja | Ganzzahl, ausschließlich `2`; boolesche Werte unzulässig |
 | `id` | Ja | Gültige Profil-ID; entspricht Dateiname ohne `.json` |
 | `name` | Ja | Nicht leere Zeichenkette |
+| `category` | Ja | `firmware`, `software` oder `operating_system` |
 | `source_type` | Ja | `text`, `json` oder `json_value` |
 | `source_url` | Ja | Nicht leere HTTP-/HTTPS-URL mit Host |
 | `encoding` | Nein | Nicht leere, von Python unterstützte Zeichensatzbezeichnung |
@@ -177,12 +181,13 @@ Beispiel der aufgelösten Konfiguration:
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "id": "coros-dura",
   "profile": "coros.dura",
   "name": "COROS DURA – Firmware",
   "manufacturer": "COROS",
   "model": "DURA",
+  "category": "firmware",
   "source_type": "text",
   "source_url": "https://support.coros.com/hc/en-us/articles/32924317141652-COROS-DURA-Release-Notes",
   "version_pattern": "\\bV\\s*([0-9]+(?:\\.[0-9]+){2,3})\\b"
@@ -397,3 +402,7 @@ Dieser Test bestätigt die Extraktion, nicht die Erreichbarkeit der Website.
 8. Alle geforderten Tests bestehen.
 9. Beispielprofil und Dokumentation sind vorhanden.
 10. Keine zusätzlichen Python-Abhängigkeiten.
+11. Profile haben `schema_version: 2` und Pflichtfeld `category` (`firmware`, `software`, `operating_system`).
+12. Einträge werden in `--status` und `--check` nach Kategorie gruppiert ausgegeben.
+13. Ein einzelner Eintrag kann mit `--device ID` geprüft oder angezeigt werden.
+14. Die ID-Spalte wird im `--status`-Output angezeigt.

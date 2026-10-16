@@ -8,7 +8,7 @@ Die Funktion benötigt keine KI, keine externen KI-Dienste und keine zusätzlich
 
 ## 2. Voraussetzungen und Abgrenzung
 
-Voraussetzung ist die Umsetzung des lokalen Profilformats mit `schema_version: 1` und Profilauflösung aus `devices.json`.
+Voraussetzung ist die Umsetzung des lokalen Profilformats mit `schema_version: 2` und Profilauflösung aus `devices.json`. Jedes Profil benötigt das Pflichtfeld `category` (`firmware`, `software` oder `operating_system`).
 
 ### Bestandteil des MVP
 
@@ -75,6 +75,7 @@ Abfragen:
 - Modell: nicht leere Zeichenkette.
 - Anzeigename: Vorschlag `<Hersteller> <Modell> – Firmware`, editierbar.
 - Profil-ID: Vorschlag aus Hersteller und Modell, editierbar.
+- Kategorie: `firmware`, `software` oder `operating_system` (Vorschlag: `firmware`), editierbar.
 
 Der ID-Vorschlag soll kleingeschrieben, auf ASCII normalisiert und von nicht erlaubten Zeichen bereinigt werden. Der Nutzer muss den Vorschlag bestätigen oder ändern. Falls kein brauchbarer Vorschlag möglich ist, ID manuell verlangen.
 
@@ -262,15 +263,16 @@ Diese Absicherung des Assistenten ist keine vollständige Absicherung der regul�
 
 ## 7. Profil-Export
 
-Exportformat entspricht dem vorhandenen Schema:
+Exportformat entspricht dem vorhandenen Schema (Version 2):
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "id": "coros.dura",
   "name": "COROS DURA – Firmware",
   "manufacturer": "COROS",
   "model": "DURA",
+  "category": "firmware",
   "source_type": "text",
   "source_url": "https://example.org/releases",
   "version_pattern": "\\bV\\s*([0-9]+(?:\\.[0-9]+){2,3})\\b"
@@ -408,7 +410,7 @@ Standardbibliothek verwenden: `unittest`, `unittest.mock`, `tempfile`. Keine Liv
 3. Der Nutzer wählt Fundstelle und bestätigt die tatsächlichen Ergebnisse.
 4. Ein zusammengesetzter Wert wie `1.13/1.02` bleibt vollständig erhalten.
 5. Tabellenmodus ignoriert Versionen benachbarter Downloads in den Tests.
-6. Exportierte Datei entspricht Schema-Version 1 und ist im Projekt verwendbar.
+6. Exportierte Datei entspricht Schema-Version 2 mit Pflichtfeld `category` und ist im Projekt verwendbar.
 7. Keine Änderungen an Geräteauswahl oder Zustand.
 8. Keine KI, externen KI-Dienste oder zusätzlichen Python-Pakete.
 9. Fehler und Abbruch hinterlassen keine unvollständige finale Profildatei.
