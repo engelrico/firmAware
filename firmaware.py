@@ -1317,6 +1317,8 @@ def print_entry_actions(
     toggle_label = "Disable entry" if is_enabled else "Enable entry"
 
     actions = [
+        "Check now",
+        "Version history",
         "Move up",
         "Move down",
         "Edit name",
@@ -1336,6 +1338,7 @@ def print_entry_actions(
     print(f"  Status:     {status_label}")
     print(f"  Last check: {format_timestamp(entry_state.get('last_checked'))}")
     print(f"  Version:    {latest}")
+    print(f"  Known:      {len(versions)} version(s)")
     print(f"  Position:   {index + 1} of {total}")
     print()
     for i, label in enumerate(actions):
@@ -1440,6 +1443,59 @@ def toggle_entry(raw: list[Any], index: int) -> None:
     entry["enabled"] = not old
     state_label = "enabled" if not old else "disabled"
     print(f"  Entry is now {state_label}.")
+
+
+def check_entry_now(
+    device: Mapping[str, Any], state: dict[str, Any], state_path: Path
+) -> None:
+    """Check a single entry against its source and show the result."""
+    name = display_name(device)
+    print()
+    print(f"  Checking {name} …")
+    try:
+        versions = fetch_versions(device)
+        previous = state.get("devices", {}).get(device["id"])
+        known, new_versions = compare_versions(versions, previous)
+        summary = check_summary(previous, versions, new_versions)
+        print(f"  Result: {summary}")
+        state["devices"][device["id"]] = {
+            "last_checked": current_timestamp(),
+            "known_versions": sorted(set(known) | set(versions)),
+        }
+        try:
+            save_state(state_path, state)
+            print("  State saved.")
+        except OSError as save_error:
+            print(f"  Storage error: {save_error}")
+    except Exception as error:
+        print(f"  Check error: {error}")
+    print()
+    input("  Press Enter to continue …")
+
+
+def show_version_history(
+    device: Mapping[str, Any], state: Mapping[str, Any]
+) -> None:
+    """List all known versions for an entry from state.json."""
+    entry_state = state.get("devices", {}).get(device["id"]) or {}
+    versions = entry_state.get("known_versions") or []
+    name = display_name(device)
+
+    print()
+    print(f"  ── Version History: {name} ───────────────────────────")
+    print(f"  Last check: {format_timestamp(entry_state.get('last_checked'))}")
+    print()
+    if not versions:
+        print("  No known versions yet. Run a check first.")
+    else:
+        sorted_versions = sorted(versions, key=version_sort_key)
+        for i, version in enumerate(sorted_versions):
+            marker = "►" if i == len(sorted_versions) - 1 else " "
+            print(f"  {marker} {version}")
+        print()
+        print(f"  Total: {len(versions)} version(s)")
+    print()
+    input("  Press Enter to continue …")
 
 
 def run_interactive(devices_path: Path, profiles_dir: Path, state_path: Path) -> int:
@@ -1583,6 +1639,7 @@ def run_interactive(devices_path: Path, profiles_dir: Path, state_path: Path) ->
                 # Open actions submenu with arrow-key navigation.
                 entry = raw_entries[selected]
                 action_selected = 0
+                max_action = 8  # last action: Back to list
 
                 while True:
                     # Re-resolve the entry to reflect any changes.
@@ -1603,15 +1660,19 @@ def run_interactive(devices_path: Path, profiles_dir: Path, state_path: Path) ->
                     if action_key == "up":
                         action_selected -= 1
                         if action_selected < 0:
-                            action_selected = 6  # last action: Back to list
+                            action_selected = max_action
                     elif action_key == "down":
                         action_selected += 1
-                        if action_selected > 6:
+                        if action_selected > max_action:
                             action_selected = 0
                     elif action_key == "q" or action_key == "escape":
                         break
                     elif action_key == "\r" or action_key == "\n":
-                        if action_selected == 0:  # Move up
+                        if action_selected == 0:  # Check now
+                            check_entry_now(display_entry, device_state, state_path)
+                        elif action_selected == 1:  # Version history
+                            show_version_history(display_entry, device_state)
+                        elif action_selected == 2:  # Move up
                             new_index = move_entry(raw_entries, selected, -1)
                             if new_index != selected:
                                 selected = new_index
@@ -1619,7 +1680,7 @@ def run_interactive(devices_path: Path, profiles_dir: Path, state_path: Path) ->
                                 print("  Moved up.")
                             else:
                                 print("  Already at top.")
-                        elif action_selected == 1:  # Move down
+                        elif action_selected == 3:  # Move down
                             new_index = move_entry(raw_entries, selected, 1)
                             if new_index != selected:
                                 selected = new_index
@@ -1627,15 +1688,15 @@ def run_interactive(devices_path: Path, profiles_dir: Path, state_path: Path) ->
                                 print("  Moved down.")
                             else:
                                 print("  Already at bottom.")
-                        elif action_selected == 2:  # Edit name
+                        elif action_selected == 4:  # Edit name
                             resolved_name = display_list[selected].get("name", "")
                             edit_entry_name(raw_entries, selected, resolved_name)
                             dirty = True
                             print("  Name updated.")
-                        elif action_selected == 3:  # Duplicate
+                        elif action_selected == 5:  # Duplicate
                             duplicate_entry(raw_entries, selected, existing_ids)
                             dirty = True
-                        elif action_selected == 4:  # Delete
+                        elif action_selected == 6:  # Delete
                             before = len(raw_entries)
                             delete_entry(raw_entries, selected, existing_ids)
                             if len(raw_entries) < before:
@@ -1644,10 +1705,10 @@ def run_interactive(devices_path: Path, profiles_dir: Path, state_path: Path) ->
                                     selected -= 1
                                 if not raw_entries:
                                     break
-                        elif action_selected == 5:  # Toggle enabled
+                        elif action_selected == 7:  # Toggle enabled
                             toggle_entry(raw_entries, selected)
                             dirty = True
-                        elif action_selected == 6:  # Back to list
+                        elif action_selected == 8:  # Back to list
                             break
                     else:
                         pass
