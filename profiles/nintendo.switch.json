@@ -6,6 +6,6 @@
   "model": "Switch",
   "category": "firmware",
   "source_type": "text",
-  "source_url": "https://www.nintendo.com/de-de/Support/Fehlersuche/System-Updates-fur-Nintendo-Switch-und-Liste-der-Anderungen-1548034.html",
-  "version_pattern": "Verbesserungen\\s+in\\s+Version\\s+([0-9]+\\.[0-9]+\\.[0-9]+)"
+  "source_url": "https://github.com/THZoria/NX_Firmware/releases",
+  "version_pattern": "\\bFirmware\\s+([0-9]+\\.[0-9]+\\.[0-9]+)\\b"
 }
