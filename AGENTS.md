@@ -1,18 +1,19 @@
 # AGENTS.md
 
-This document helps AI agents working on the firmAware project understand the codebase, conventions, and common tasks.
+This document helps AI agents working on the firmAware project understand the codebase, conventions, and common tasks. For the detailed technical specification, see [`requirements/specification.md`](requirements/specification.md).
 
 ---
 
 ## Project Overview
 
-**firmAware** checks public firmware/software sources for configured devices and reports previously unknown version labels in the terminal. Known versions are stored locally in `state.json`, so each run only highlights new entries.
+**firmAware** checks public firmware/software sources for configured entries and reports previously unknown version labels in the terminal. Known versions are stored locally in `state.json`, so each run only highlights new entries.
 
 - **Tech stack:** Python 3 standard library only (no pip dependencies, no database)
 - **Entry point:** `firmaware.py`
 - **Configuration:** `devices.json` (personal selection) + `profiles/*.json` (reusable fetch/extraction logic)
 - **State:** `state.json` (known versions + last check times, keyed by local entry ID)
 - **Tests:** `tests/test_firmaware.py` (unittest, no network access)
+- **Full specification:** `requirements/specification.md`
 
 ---
 
@@ -21,14 +22,14 @@ This document helps AI agents working on the firmAware project understand the co
 ```
 firmAware/
 ├── firmaware.py              # fetch, extraction, comparison, profiles, wizard, CLI
-├── devices.json              # personal device selection (id + profile or direct config)
-├── profiles/                 # reusable device profiles (*.json)
+├── devices.json              # personal entry selection (id + profile or direct config)
+├── profiles/                 # reusable entry profiles (*.json)
 │   └── *.json                # schema v2 with category field
 ├── state.json                # known versions and last checks
 ├── tests/
 │   └── test_firmaware.py     # automated tests (standard library only)
 ├── requirements/
-│   ├── specification.md
+│   ├── specification.md      # detailed technical specification
 │   ├── firmAware-requirement-geraeteprofile.md
 │   └── firmAware-requirement-profilassistent.md
 ├── .opencode/
@@ -46,7 +47,7 @@ firmAware/
 
 ### Profile Schema (version 2)
 
-Every profile in `profiles/*.json` must have:
+Every profile in `profiles/*.json` must conform to schema v2 as defined in [`requirements/specification.md#46-entry-profiles-format-and-required-fields`](requirements/specification.md#46-entry-profiles-format-and-required-fields). Key points:
 
 | Field | Required | Allowed values / notes |
 |-------|----------|------------------------|
@@ -56,15 +57,12 @@ Every profile in `profiles/*.json` must have:
 | `category` | Yes | One of: `firmware`, `software`, `operating_system` |
 | `source_type` | Yes | `text`, `json`, or `json_value` |
 | `source_url` | Yes | Valid HTTP/HTTPS URL without credentials |
-| `encoding` | No | Valid Python charset name |
-| `manufacturer` | No | Non-empty string |
-| `model` | No | Non-empty string |
 
-Profile-based entries in `devices.json` may contain **only** `id`, `profile`, and `name`. Technical fields (`source_url`, `source_type`, etc.) are a configuration error in profile-based entries.
+Profile-based entries in `devices.json` may contain **only** `id`, `profile`, and `name`. Technical fields are a configuration error in profile-based entries.
 
 ### Version Sorting
 
-The `version_sort_key` function compares versions by **block count first** (more numeric blocks = newer), then numerically per block. Example: `6.1.1978418030` (3 blocks) > `1978074000` (1 block); `1.10` > `1.9`.
+The `version_sort_key` function compares versions by **block count first** (more numeric blocks = newer), then numerically per block. Example: `6.1.1978418030` (3 blocks) > `1978074000` (1 block); `1.10` > `1.9`. See [`requirements/specification.md#7-comparison-logic-and-initialization`](requirements/specification.md#7-comparison-logic-and-initialization).
 
 ### Wording (English Only)
 
@@ -78,11 +76,11 @@ The `version_sort_key` function compares versions by **block count first** (more
 |--------|---------|
 | `--check` | Check sources and update state (default) |
 | `--status` | Show stored state only, no network request |
-| `--create-profile` | Interactively create and export a device profile |
+| `--create-profile` | Interactively create and export an entry profile |
 | `--device ID`, `-d ID` | Check or show only the entry with this ID |
 | `--devices PATH` | Path to `devices.json` |
 | `--state PATH` | Path to `state.json` |
-| `--profiles-dir PATH` | Directory with device profiles |
+| `--profiles-dir PATH` | Directory with entry profiles |
 
 `--device ID` can also be passed as a positional argument after `--check` or `--status` (e.g. `python3 firmaware.py --check nanostation-m5-xm`).
 
@@ -144,7 +142,7 @@ python3 -m unittest discover -s tests -t .
 
 Location: `.opencode/agents/profileCreator.md`
 
-Purpose: Interactively create a device profile for a manufacturer page and bind it in `devices.json`.
+Purpose: Interactively create an entry profile for a manufacturer page and bind it in `devices.json`.
 
 Steps:
 1. Accept a release/source URL

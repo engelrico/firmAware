@@ -8,6 +8,8 @@ Guidelines for contributing to firmAware.
 
 firmAware runs locally and requires **no dedicated cloud service**. It relies **exclusively on the Python standard library** — there are no pip dependencies and no database.
 
+For the detailed technical specification, see [`requirements/specification.md`](requirements/specification.md).
+
 ### Local Setup
 
 ```bash
@@ -41,7 +43,7 @@ git checkout -b feature/your-feature-name
 
 ### 2. Make Your Changes
 
-Follow the conventions described in `AGENTS.md`:
+Follow the conventions described in [`AGENTS.md`](AGENTS.md):
 
 - Profile schema v2 with `category` field (`firmware`, `software`, `operating_system`)
 - Profile IDs matching `[a-z0-9][a-z0-9._-]*`
@@ -91,20 +93,22 @@ Then open a Pull Request on GitHub.
 
 ### Required Fields
 
-| Field | Description |
-|-------|-------------|
-| `schema_version` | Must be `2` |
-| `id` | Profile ID, matches filename without `.json`, pattern `[a-z0-9][a-z0-9._-]*` |
-| `name` | Human-readable display name |
-| `category` | `firmware`, `software`, or `operating_system` |
-| `source_type` | `text`, `json`, or `json_value` |
-| `source_url` | HTTP/HTTPS URL without credentials |
+The full field reference is in [`requirements/specification.md#46-entry-profiles-format-and-required-fields`](requirements/specification.md#46-entry-profiles-format-and-required-fields).
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `schema_version` | Yes | Must be `2` |
+| `id` | Yes | Profile ID, matches filename without `.json`, pattern `[a-z0-9][a-z0-9._-]*` |
+| `name` | Yes | Human-readable display name |
+| `category` | Yes | `firmware`, `software`, or `operating_system` |
+| `source_type` | Yes | `text`, `json`, or `json_value` |
+| `source_url` | Yes | HTTP/HTTPS URL without credentials |
 
 ### Optional Fields
 
 | Field | Description |
 |-------|-------------|
-| `encoding` | Python charset name (e.g. `utf-8`, `cp1252`, `latin-1`) |
+| `encoding` | Python charset name (e. g. `utf-8`, `cp1252`, `latin-1`) |
 | `manufacturer` | Device manufacturer |
 | `model` | Device model |
 
@@ -116,6 +120,8 @@ Then open a Pull Request on GitHub.
 - **Profile IDs are not import paths** — no dynamic Python imports based on IDs
 
 ### Source Types
+
+The full source type reference is in [`requirements/specification.md`](requirements/specification.md):
 
 | `source_type` | Required fields | Description |
 |---------------|-----------------|-------------|

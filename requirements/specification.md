@@ -1,107 +1,113 @@
-# firmAware – Spezifikation
+# firmAware – Specification
 
-Stand: 16. Oktober 2026  
-Version: 0.4 (Schema v2 mit Kategorie, Clustering und Einzelntry-Check)
+Status: 17 October 2026  
+Version: 0.5 (schema v2 with category, clustering, and single-entry check)
 
-## 1. Ziel und Umfang
+## 1. Goal and Scope
 
-firmAware prüft öffentliche Firmwarequellen für konfigurierte Geräte und meldet bislang unbekannte Versionsbezeichnungen im Terminal. Die Anwendung wird lokal vom Nutzer betrieben und benötigt keinen eigenen Cloud-Dienst.
+firmAware checks public firmware/software sources for configured entries and reports previously unknown version labels in the terminal. Known versions are stored locally in `state.json`, so each run only highlights new entries.
 
-Der aktuelle Prototyp erkennt Änderungen an veröffentlichten Versionslisten. Er prüft nicht die installierte Firmware eines Geräts und bestätigt nicht die Verfügbarkeit eines Updates für ein konkretes Gerät.
+The application is operated locally by the user and requires no dedicated cloud service. It observes published version lists. It does **not** check the firmware installed on a device and does **not** confirm that an update is available for a specific device.
 
-Diese Spezifikation beschreibt den aktuellen Stand von `firmaware.py`, `devices.json`, `profiles/*.json`, `state.json` und `tests/test_firmaware.py`. Geräte lassen sich direkt oder über wiederverwendbare Geräteprofile konfigurieren. Zukunftsideen sind getrennt in Abschnitt 12 aufgeführt und nicht Bestandteil der Implementierung.
+This specification describes the current state of `firmaware.py`, `devices.json`, `profiles/*.json`, `state.json`, and `tests/test_firmaware.py`. Entries can be configured directly or via reusable profiles. Future ideas are listed separately in section 12 and are not part of the implementation.
 
-## 2. Technische Grundlage
+## 2. Technical Foundation
 
-- Python 3; ausschließlich Standardbibliothek, keine pip-Abhängigkeiten.
-- CLI ohne Weboberfläche oder dauerhaft laufenden Hintergrunddienst.
-- HTTP-Abfragen über `urllib.request`.
-- JSON-Verarbeitung über `json`, reguläre Ausdrücke über `re`.
-- Automatisierte Tests über `unittest` (Standardbibliothek), ohne Netzzugang.
-- Speicherung in lokalen JSON-Dateien, keine Datenbank.
-- Keine Firmwareinstallation und keine Downloads von Firmwaredateien.
-- Internetzugang zu den konfigurierten Quellen erforderlich.
+- Python 3; exclusively standard library, no pip dependencies.
+- CLI without web interface or long-running background service.
+- HTTP queries via `urllib.request`.
+- JSON processing via `json`, regular expressions via `re`.
+- Automated tests via `unittest` (standard library), without network access.
+- Storage in local JSON files, no database.
+- No firmware installation and no downloads of firmware files.
+- Internet access to the configured sources is required.
 
-## 3. Projektdateien und Aufruf
+## 3. Project Files and Invocation
 
-| Datei | Zweck |
-|---|---|
-| `firmaware.py` | Abruf, Extraktion, Vergleich, Profilauflösung und Speicherung |
-| `devices.json` | Persönliche Geräteauswahl (direkt oder über Profile) |
-| `profiles/*.json` | Wiederverwendbare Geräteprofile (Abruf und Versionsextraktion) |
-| `state.json` | Bekannte Versionen und letzte erfolgreiche Prüfungen |
-| `tests/test_firmaware.py` | Automatisierte Tests (nur Standardbibliothek) |
-| `specification.md` | Projektbegleitende Beschreibung |
+| File | Purpose |
+|------|---------|
+| `firmaware.py` | Fetch, extraction, comparison, profile resolution, and storage |
+| `devices.json` | Personal entry selection (direct or via profiles) |
+| `profiles/*.json` | Reusable entry profiles (fetch and version extraction) |
+| `state.json` | Known versions and last successful checks |
+| `tests/test_firmaware.py` | Automated tests (standard library only) |
+| `specification.md` | Project specification |
 
-Standardaufruf (entspricht `--check`):
+Standard invocation (equivalent to `--check`):
 
 ```bash
 python3 firmaware.py
 python3 firmaware.py --check
 ```
 
-Gespeicherten Zustand anzeigen, ohne Netzabfrage:
+Show stored state without a network request:
 
 ```bash
 python3 firmaware.py --status
 ```
 
-Interaktiv ein Geräteprofil erstellen:
+Interactively create an entry profile:
 
 ```bash
 python3 firmaware.py --create-profile --profiles-dir ./profiles
 ```
 
-`--check`, `--status` und `--create-profile` schließen sich gegenseitig aus. `--profiles-dir PATH` gilt für alle Modi und ist im Erstellungsmodus das Exportverzeichnis. Der Erstellungsmodus verzweigt vor dem Laden von `devices.json` und `state.json`; beide Dateien müssen dafür nicht existieren.
+`--check`, `--status`, and `--create-profile` are mutually exclusive. `--profiles-dir PATH` applies to all modes and is the export directory in create mode. The create mode branches before loading `devices.json` and `state.json`; both files do not need to exist for that mode.
 
-Mit `--device ID` (Kurzform `-d ID`) oder einer ID als positionales Argument nach `--check`/`--status` wird nur der entsprechende Eintrag geprüft bzw. angezeigt. Existiert die ID nicht, tritt ein Konfigurationsfehler auf.
-
-Abweichende Dateipfade:
+Custom file paths:
 
 ```bash
-python3 firmaware.py --devices /pfad/devices.json --state /pfad/state.json
+python3 firmaware.py --devices /path/devices.json --state /path/state.json
 ```
 
-Abweichendes Profilverzeichnis:
+Custom profile directory:
 
 ```bash
 python3 firmaware.py --devices ./devices.json --profiles-dir ./profiles --check
 ```
 
-Ohne Argumente werden beide JSON-Dateien relativ zum Verzeichnis der Python-Datei gesucht, nicht relativ zum aktuellen Terminalverzeichnis. Ebenso liegt das Standard-Profilverzeichnis als `profiles` neben der Python-Datei und ist unabhängig vom aktuellen Arbeitsverzeichnis. Ein explizit übergebenes relatives `--profiles-dir` wird dagegen relativ zum aktuellen Arbeitsverzeichnis aufgelöst. Existiert die Zustandsdatei nicht, wird mit einem leeren Zustand begonnen. Konfiguration und Zustand werden als UTF-8 gelesen und geschrieben.
+Without arguments, both JSON files are looked up relative to the Python file's directory – **not** relative to the current working directory. An explicitly relative `--profiles-dir`, however, is resolved relative to the current working directory. If the state file does not exist, an empty state is used. Configuration and state are read and written as UTF-8.
 
-Automatisierte Tests:
+With `--device ID` (short form `-d ID`) or an ID as a positional argument after `--check`/`--status`, only the corresponding entry is checked or shown. If the ID does not exist, a configuration error occurs.
+
+```bash
+python3 firmaware.py --check --device nanostation-m5-xm
+python3 firmaware.py --check nanostation-m5-xm
+python3 firmaware.py --status nanostation-m5-xm
+```
+
+Automated tests:
 
 ```bash
 python3 -m unittest discover -s tests -t .
 ```
 
-Die Tests nutzen `unittest` und benötigen keinen Netzzugang; die Quellenabfrage wird durch Testdoubles ersetzt.
+The tests use `unittest` and require no network access; source fetching is replaced by test doubles.
 
-## 4. Konfiguration: Geräteauswahl und Geräteprofile
+## 4. Configuration: Entry Selection and Entry Profiles
 
-Die Konfiguration ist in zwei Ebenen getrennt:
+The configuration is split into two levels:
 
-- `devices.json` beschreibt die **persönliche Geräteauswahl** und enthält je Gerät eine lokale ID sowie optional einen Anzeigenamen.
-- `profiles/*.json` beschreiben **wiederverwendbar** Abruf und Versionsextraktion einer Quelle.
+- `devices.json` describes the **personal entry selection** and contains a local ID per entry plus an optional display name.
+- `profiles/*.json` describe **reusable** fetch and version extraction for a source.
 
-Ein Gerät wird entweder direkt (mit allen technischen Feldern in `devices.json`) oder profilbasiert (über eine Profilreferenz) konfiguriert. Beide Formen dürfen gemischt werden. Das Wurzelobjekt enthält jeweils eine Liste `devices`; jede lokale Geräte-ID muss eindeutig sein. Die Implementierung unterstützt die Quelltypen `text`, `json` und `json_value`.
+An entry is configured either directly (with all technical fields in `devices.json`) or profile-based (via a profile reference). Both forms may be mixed. The root object contains a list `devices`; every local entry ID must be unique. The implementation supports the source types `text`, `json`, and `json_value`.
 
-### 4.1 Gemeinsame Felder in devices.json
+### 4.1 Common Fields in devices.json
 
-| Feld | Pflicht | Bedeutung |
-|---|---|---|
-| `id` | Ja | Lokale Geräte-ID; eindeutiger Zustandsschlüssel |
-| `name` | Nein | Lokaler Anzeigename; überschreibt bei Profilen den Profilnamen, sonst wird die ID bzw. der Profilname angezeigt |
-| `profile` | Nein | Referenz auf ein Geräteprofil; vorhanden = profilbasierter Eintrag |
-| `source_type` | Nur direkt | `text`, `json` oder `json_value` |
-| `source_url` | Nur direkt | URL der abzufragenden Quelle |
+| Field | Required | Meaning |
+|-------|----------|---------|
+| `id` | Yes | Local entry ID; unique state key |
+| `name` | No | Local display name; overrides the profile name for profile-based entries, otherwise the ID or profile name is shown |
+| `profile` | No | Reference to an entry profile; present = profile-based entry |
+| `source_type` | Direct only | `text`, `json`, or `json_value` |
+| `source_url` | Direct only | URL of the source to fetch |
 
-Ist `profile` gesetzt, dürfen **ausschließlich** die Felder `id`, `profile` und `name` vorkommen. Technische Felder wie `source_url`, `source_type`, `encoding` oder `version_pattern` sind dann ein Konfigurationsfehler; es gibt kein stilles Überschreiben oder Ignorieren. Individuelle technische Einstellungen bleiben über direkte Einträge möglich.
+If `profile` is set, **only** the fields `id`, `profile`, and `name` may occur. Technical fields such as `source_url`, `source_type`, `encoding`, or `version_pattern` are a configuration error; there is no silent overriding or ignoring. Individual technical settings remain possible via direct entries.
 
-Weitere beschreibende Felder wie Hersteller, Modell oder Hardwareversion werden nicht ausgewertet.
+Additional descriptive fields such as manufacturer, model, or hardware version are not evaluated.
 
-### 4.2 Textquelle: TP-Link RE200 V4 EU
+### 4.2 Text Source: TP-Link RE200 V4 EU
 
 ```json
 {
@@ -113,17 +119,17 @@ Weitere beschreibende Felder wie Hersteller, Modell oder Hardwareversion werden 
 }
 ```
 
-`version_pattern` ist ein Python-kompatibler regulärer Ausdruck. Backslashes müssen in JSON maskiert sein. Das Muster darf keine oder genau eine Capture-Gruppe enthalten:
+`version_pattern` is a Python-compatible regular expression. Backslashes must be escaped in JSON. The pattern may contain no or exactly one capture group:
 
-- Ohne Capture-Gruppe wird der vollständige Treffer gespeichert.
-- Mit einer Capture-Gruppe wird deren Inhalt gespeichert.
-- Mehr als eine Capture-Gruppe führt zu einem Prüffehler.
+- Without a capture group, the full match is stored.
+- With one capture group, its content is stored.
+- More than one capture group leads to a check error.
 
-Der abgerufene Text wird mit `html.unescape` verarbeitet. Es gibt keine HTML-zu-Text-Konvertierung, DOM-Auswertung oder JavaScript-Ausführung. Ein Muster muss deshalb im direkt erhaltenen Inhalt funktionieren.
+The retrieved text is processed with `html.unescape`. There is no HTML-to-text conversion, DOM evaluation, or JavaScript execution. A pattern must therefore work on the directly retrieved content.
 
-Beispiel einer erkannten Bezeichnung: `RE200(EU)_V4_200922`.
+Example recognized label: `RE200(EU)_V4_200922`.
 
-### 4.3 JSON-Quelle: NanoStation M5 XM
+### 4.3 JSON Source: NanoStation M5 XM
 
 ```json
 {
@@ -136,13 +142,13 @@ Beispiel einer erkannten Bezeichnung: `RE200(EU)_V4_200922`.
 }
 ```
 
-Die Antwort muss ein JSON-Objekt mit einer Liste unter `items_key` enthalten. Jedes Listenelement muss ein Objekt sein. Das Feld unter `version_key` muss eine nichtleere Zeichenfolge enthalten; führende und nachfolgende Leerzeichen werden entfernt.
+The response must be a JSON object with a list under `items_key`. Every list element must be an object. The field under `version_key` must be a non-empty string; leading and trailing whitespace is removed.
 
-Einträge mit `enabled: false` werden übersprungen. Bei fehlendem `enabled` wird der Eintrag berücksichtigt. Ein fehlerhafter berücksichtigter Eintrag führt zum Fehler für die gesamte Geräteprüfung; es wird keine Teilliste gespeichert.
+Entries with `enabled: false` are skipped. If `enabled` is missing, the entry is considered. A faulty considered entry leads to an error for the entire entry check; no partial list is stored.
 
-Die Schlüssel sind direkte Feldnamen, keine JSONPath-Ausdrücke. Verschachtelte Pfade werden nicht unterstützt.
+The keys are direct field names, not JSONPath expressions. Nested paths are not supported.
 
-Beispielantwort:
+Example response:
 
 ```json
 {
@@ -156,25 +162,25 @@ Beispielantwort:
 }
 ```
 
-Nur `version` und der optionale Aktivierungsstatus werden derzeit ausgewertet. Veröffentlichungsdatum, Release Notes, Downloadlink, Produktlisten und Kanäle werden nicht verarbeitet. Die produktbezogene URL liefert die Zuordnung zum XM-Geräteprofil; das Programm überprüft diese Zuordnung nicht zusätzlich.
+Only `version` and the optional activation status are currently evaluated. Publication date, release notes, download link, product lists, and channels are not processed. The product-specific URL provides the assignment to the XM entry profile; the program does not verify this assignment additionally.
 
-### 4.4 JSON-Einzelwert: Shelly 1 Gen1
+### 4.4 JSON Single Value: Shelly 1 Gen1
 
 ```json
 {
   "id": "shelly-1-gen1-stable",
-  "name": "Shelly 1 Gen1 – stabile Firmware",
+  "name": "Shelly 1 Gen1 – stable firmware",
   "source_type": "json_value",
   "source_url": "https://api.shelly.cloud/files/firmware",
   "value_path": ["data", "SHSW-1", "version"]
 }
 ```
 
-Die Antwort muss ein JSON-Objekt sein. `value_path` ist eine Liste von Schlüsseln, die der Reihe nach vom Wurzelobjekt aus aufgelöst werden. Der daraus erhaltene Wert muss eine nichtleere Zeichenfolge sein; führende und nachfolgende Leerzeichen werden entfernt. Genau dieser eine Wert bildet die erkannte Version.
+The response must be a JSON object. `value_path` is a list of keys resolved successively from the root object. The resulting value must be a non-empty string; leading and trailing whitespace is removed. Exactly this one value forms the recognized version.
 
-Die Schlüssel sind direkte Feldnamen, keine JSONPath-Ausdrücke. Ein fehlender Pfad oder ein Wert, der keine Zeichenfolge ist, führt zum Prüffehler. Anders als bei `json` gibt es keine Liste, kein `enabled` und keine Zusammenführung mehrerer Einträge.
+The keys are direct field names, not JSONPath expressions. A missing path or a value that is not a string leads to a check error. Unlike `json`, there is no list, no `enabled`, and no merging of multiple entries.
 
-Beispielauszug:
+Example excerpt:
 
 ```json
 {
@@ -186,9 +192,9 @@ Beispielauszug:
 }
 ```
 
-### 4.5 Vollständige Struktur
+### 4.5 Complete Structure
 
-Profilbasierte und direkte Einträge dürfen gemischt werden:
+Profile-based and direct entries may be mixed:
 
 ```json
 {
@@ -200,7 +206,7 @@ Profilbasierte und direkte Einträge dürfen gemischt werden:
     {
       "id": "tplink-re200-v4-eu",
       "profile": "tplink.re200-v4-eu",
-      "name": "Mein Repeater"
+      "name": "My Repeater"
     },
     {
       "id": "nanostation-m5-xm",
@@ -214,11 +220,11 @@ Profilbasierte und direkte Einträge dürfen gemischt werden:
 }
 ```
 
-Das zweite Gerät überschreibt den Profilnamen lokal, das dritte ist ein direkter Eintrag.
+The second entry overrides the profile name locally, the third is a direct entry.
 
-### 4.6 Geräteprofile: Format und Pflichtfelder
+### 4.6 Entry Profiles: Format and Required Fields
 
-Beispiel `profiles/coros.dura.json`:
+Example `profiles/coros.dura.json`:
 
 ```json
 {
@@ -234,51 +240,51 @@ Beispiel `profiles/coros.dura.json`:
 }
 ```
 
-| Feld | Pflicht | Anforderung |
-|---|---|---|
-| `schema_version` | Ja | Ganzzahl, ausschließlich `2`; boolesche Werte unzulässig |
-| `id` | Ja | Gültige Profil-ID; entspricht dem Dateinamen ohne `.json` |
-| `name` | Ja | Nicht leere Zeichenkette |
-| `category` | Ja | `firmware`, `software` oder `operating_system` |
-| `source_type` | Ja | `text`, `json` oder `json_value` |
-| `source_url` | Ja | Nicht leere HTTP-/HTTPS-URL mit Host |
-| `encoding` | Nein | Nicht leere, von Python unterstützte Zeichensatzbezeichnung |
-| `manufacturer` | Nein | Nicht leere Zeichenkette |
-| `model` | Nein | Nicht leere Zeichenkette |
+| Field | Required | Requirement |
+|-------|----------|-------------|
+| `schema_version` | Yes | Integer, exclusively `2`; boolean values not allowed |
+| `id` | Yes | Valid profile ID; matches filename without `.json` |
+| `name` | Yes | Non-empty string |
+| `category` | Yes | `firmware`, `software`, or `operating_system` |
+| `source_type` | Yes | `text`, `json`, or `json_value` |
+| `source_url` | Yes | Non-empty HTTP/HTTPS URL with host |
+| `encoding` | No | Non-empty, Python-supported charset designation |
+| `manufacturer` | No | Non-empty string |
+| `model` | No | Non-empty string |
 
-Quelltypspezifische Pflichtfelder:
+Source-type-specific required fields:
 
-| Quelltyp | Pflichtfelder |
-|---|---|
-| `text` | `version_pattern`: nicht leerer, gültiger regulärer Ausdruck |
-| `json` | `items_key`, `version_key`: nicht leere Zeichenketten |
-| `json_value` | `value_path`: nicht leere Liste nicht leerer Zeichenketten |
+| Source type | Required fields |
+|-------------|-----------------|
+| `text` | `version_pattern`: non-empty, valid regular expression |
+| `json` | `items_key`, `version_key`: non-empty strings |
+| `json_value` | `value_path`: non-empty list of non-empty strings |
 
-Für `version_pattern` gilt: ohne Klammergruppe ist der vollständige Treffer die Version, mit genau einer Klammergruppe deren Inhalt; mehr als eine Klammergruppe ist ein Konfigurationsfehler. Regex-Gültigkeit und Gruppenanzahl werden vor einem Netzwerkabruf geprüft.
+For `version_pattern`: without a capture group, the full match is the version; with exactly one capture group, its content; more than one capture group is a configuration error. Regex validity and group count are checked before a network request.
 
-Zusätzliche Metadaten dürfen erhalten bleiben. Sie dürfen keine vorgeschriebenen Validierungen ersetzen und das Abrufverhalten nicht verändern. Zugangsdaten und Laufzeitzustände gehören nicht in Profile.
+Additional metadata may be retained. They may not replace required validations or change fetch behavior. Credentials and runtime states do not belong in profiles.
 
-### 4.7 Profil-IDs und sichere Dateipfade
+### 4.7 Profile IDs and Secure File Paths
 
-Profil-IDs müssen vollständig dem Muster `[a-z0-9][a-z0-9._-]*` entsprechen. Unzulässig sind leere IDs, `/`, `\`, absolute Pfade, Leerzeichen, Großbuchstaben und Pfadangaben wie `../coros.dura`.
+Profile IDs must fully match the pattern `[a-z0-9][a-z0-9._-]*`. Disallowed are empty IDs, `/`, `\`, absolute paths, spaces, uppercase letters, and path specifications like `../coros.dura`.
 
-Eine Profildatei wird ausschließlich als `<profiles_dir>/<profile_id>.json` bestimmt. Der aufgelöste Dateipfad muss innerhalb des Profilverzeichnisses liegen; symbolische Links dürfen keinen Zugriff außerhalb dieses Verzeichnisses ermöglichen. Profil-IDs sind keine Importpfade; es gibt keine dynamischen Python-Imports oder Programmausführung anhand dieser IDs.
+A profile file is determined exclusively as `<profiles_dir>/<profile_id>.json`. The resolved file path must lie within the profile directory; symbolic links must not allow access outside this directory. Profile IDs are not import paths; there are no dynamic Python imports or program execution based on these IDs.
 
-### 4.8 Profilauflösung und Zusammenführen
+### 4.8 Profile Resolution and Merging
 
-Vor jeder Prüfung und Statusausgabe werden alle Einträge aufgelöst und validiert:
+Before every check and status output, all entries are resolved and validated:
 
-1. Lokale Geräte-ID prüfen.
-2. Profil-ID prüfen.
-3. Profildatei bestimmen.
-4. UTF-8-JSON laden.
-5. Profilstruktur, Schema-Version und Pflichtfelder validieren.
-6. Übereinstimmung der Profil-ID mit dem Dateinamen prüfen.
-7. Flache Gerätekonfiguration erstellen.
-8. Lokale Geräte-ID übernehmen.
-9. Optionalen lokalen Namen übernehmen.
+1. Check local entry ID.
+2. Check profile ID.
+3. Determine profile file.
+4. Load UTF-8 JSON.
+5. Validate profile structure, schema version, and required fields.
+6. Check match of profile ID with filename.
+7. Create flat entry configuration.
+8. Take over local entry ID.
+9. Take over optional local name.
 
-Beispiel der aufgelösten Konfiguration:
+Example of resolved configuration:
 
 ```json
 {
@@ -295,11 +301,11 @@ Beispiel der aufgelösten Konfiguration:
 }
 ```
 
-Das Ergebnis ist mit `fetch_source()`, `extract_versions()`, `process_device()` und `print_status()` verwendbar. Eingelesene Geräte- und Profilobjekte werden beim Zusammenführen nicht verändert.
+The result is usable with `fetch_source()`, `extract_versions()`, `process_device()`, and `print_status()`. Read entry and profile objects are not modified during merging.
 
-### 4.9 Direkte Konfiguration (Rückwärtskompatibilität)
+### 4.9 Direct Configuration (Backwards Compatibility)
 
-Die bisherige direkte Konfiguration bleibt unterstützt:
+The previous direct configuration remains supported:
 
 ```json
 {
@@ -315,11 +321,11 @@ Die bisherige direkte Konfiguration bleibt unterstützt:
 }
 ```
 
-Für direkte Einträge gilt: `id` ist eine nicht leere Zeichenkette; `name` bleibt optional und ersatzweise wird die lokale ID angezeigt; technische Felder werden nach denselben Regeln wie Profile validiert; `schema_version` ist nicht erforderlich; ein fehlendes Profilverzeichnis beeinträchtigt direkte Einträge nicht.
+For direct entries: `id` is a non-empty string; `name` remains optional and otherwise the local ID is shown; technical fields are validated according to the same rules as profiles; `schema_version` is not required; a missing profile directory does not affect direct entries.
 
-## 5. Zustand: state.json
+## 5. State: state.json
 
-Initialzustand:
+Initial state:
 
 ```json
 {
@@ -327,7 +333,7 @@ Initialzustand:
 }
 ```
 
-Beispiel nach erfolgreicher Prüfung:
+Example after successful check:
 
 ```json
 {
@@ -344,77 +350,79 @@ Beispiel nach erfolgreicher Prüfung:
 }
 ```
 
-- `last_checked`: Zeitpunkt der letzten erfolgreichen Geräteprüfung, in lokaler Zeitzone mit UTC-Offset und Sekundengenauigkeit. Kein Zeitpunkt eines fehlgeschlagenen Versuchs.
-- `known_versions`: Alle bislang erfolgreich erkannten Versionsbezeichnungen dieses Geräteprofils.
-- Versionsbezeichnungen werden dedupliziert und lexikografisch sortiert.
-- Die Sortierung ist kein fachlicher Versionsvergleich.
-- Aus der Herstellerquelle verschwundene Versionen bleiben bekannt.
-- Nicht mehr konfigurierte Geräte werden nicht automatisch aus dem Zustand entfernt.
+- `last_checked`: Time of the last **successful** entry check, in local time zone with UTC offset and second precision. Not a timestamp of a failed attempt.
+- `known_versions`: All version labels successfully recognized for this entry profile so far.
+- Version labels are deduplicated and sorted lexicographically.
+- The sorting is **not** a semantic version comparison.
+- Versions disappeared from the source remain known.
+- No longer configured entries are not automatically removed from the state.
 
-Die Zustandsdatei wird vom Programm verwaltet. Gespeichert wird unter `state["devices"][device["id"]]`, wobei `device["id"]` immer die **lokale** Geräte-ID ist (nicht die Profil-ID). Profil-ID und lokale Geräte-ID sind getrennt: Die Profil-ID beschreibt die gemeinsam verwendete Quelle, die lokale ID ist der Zustandsschlüssel. Bei Umstellung eines Geräts auf ein Profil bleibt bei gleichbleibender lokaler ID derselbe gespeicherte Versionsstand erhalten; eine Migration ist nicht nötig. Mehrere lokale Geräte dürfen dasselbe Profil referenzieren, lokale IDs müssen aber eindeutig sein. Das Zustandsformat selbst bleibt unverändert.
+The state file is managed by the program. Stored under `state["devices"][device["id"]]`, where `device["id"]` is always the **local** entry ID (not the profile ID). Profile ID and local entry ID are separate: the profile ID describes the shared source, the local ID is the state key. When switching an entry to a profile, with the same local ID the same stored version state is retained; no migration is needed. Multiple local entries may reference the same profile; local IDs must be unique. The state format itself remains unchanged.
 
-Wird die Zustandsdatei gelöscht oder eine Geräte-ID geändert, beginnt für das betreffende Gerät eine neue Initialisierung. Bei Änderung der Quelle oder Extraktionslogik muss ein bewusster Umgang mit dem bisherigen Zustand erfolgen; es gibt keine automatische Migration.
+If the state file is deleted or an entry ID is changed, a new initialization begins for the affected entry. When changing the source or extraction logic, a conscious handling of the previous state is required; there is no automatic migration.
 
-## 6. Ablauf einer Prüfung
+## 6. Check Run Flow
 
-1. CLI-Argumente einlesen.
-2. Konfiguration und vorhandenen Zustand laden.
-3. Listen-/Zustandsstruktur und eindeutige lokale Geräte-IDs prüfen.
-4. Alle Einträge auflösen: Profile laden sowie Profil- und Quellkonfiguration validieren. Alle Konfigurationsfehler werden hier vor jedem Netzwerkzugriff erkannt.
-5. Geräte nacheinander verarbeiten.
-6. Quelle mit einem Netzwerk-Timeout von 30 Sekunden abrufen.
-7. Antwort anhand ihres Zeichensatz-Headers oder ersatzweise UTF-8 dekodieren.
-8. Versionen je nach Quelltyp extrahieren.
-9. Doppelte Treffer entfernen; bei null Treffern Prüfung als Fehler behandeln.
-10. Mit dem gespeicherten Zustand vergleichen.
-11. Ergebnis ausgeben und bei Erfolg den Gerätezustand aktualisieren.
-12. Nach Verarbeitung aller Geräte den Zustand speichern.
+1. Read CLI arguments.
+2. Load configuration and existing state.
+3. Check list/state structure and unique local entry IDs.
+4. Resolve all entries: load profiles and validate profile and source configuration. All configuration errors are detected before any network access.
+5. Process entries one after another.
+6. Fetch source with a network timeout of 30 seconds.
+7. Decode response based on its charset header or fallback UTF-8.
+8. Extract versions according to source type.
+9. Remove duplicate hits; treat zero hits as a check error.
+10. Compare with stored state.
+11. Output result and update entry state on success.
+12. After processing all entries, save state.
 
-HTTP-Header:
+HTTP headers:
 
 ```text
 User-Agent: firmAware/0.1
 Accept: application/json,text/html,*/*
 ```
 
-Es gibt keine eigene Wiederholungslogik und keine Browserautomatisierung.
+There is no own retry logic and no browser automation.
 
-## 7. Vergleichslogik und Initialisierung
+## 7. Comparison Logic and Initialization
 
-Beim ersten erfolgreichen Abruf eines Geräteprofils werden sämtliche erkannten Versionen als Ausgangsstand gespeichert und angezeigt. Sie werden nicht als neue Firmwareeinträge gemeldet.
+On the first successful fetch of an entry profile, all recognized versions are stored as the baseline and displayed. They are not reported as new firmware entries.
 
-Bei folgenden erfolgreichen Abrufen gilt:
-
-```text
-Neue Einträge = aktuell erkannte Versionen − bislang bekannte Versionen
-Gespeicherte Versionen = bislang bekannte Versionen ∪ aktuell erkannte Versionen
-```
-
-Beispiel:
+On subsequent successful fetches:
 
 ```text
-Bekannt: 6.3.24, 6.3.26
-Aktuell: 6.3.24, 6.3.26, 6.3.27
-Neu:     6.3.27
+New entries = currently recognized versions − previously known versions
+Stored versions = previously known versions ∪ currently recognized versions
 ```
 
-`6.3.27` ist hier nur eine hypothetische Beispielversion.
-
-Ein neu auftauchender älterer Eintrag wird ebenfalls gemeldet. Änderungen an Release Notes oder Downloadlinks bei unveränderter Versionsbezeichnung werden nicht erkannt. Eine bereits bekannte Version wird nicht erneut gemeldet, auch wenn sie zwischenzeitlich aus der Quelle entfernt wurde.
-
-## 8. Ausgabe und Rückgabecodes
-
-Reguläre Ergebnisse gehen an stdout, Fehler an stderr. Einträge werden nach Kategorie gruppiert ausgegeben (Firmware, Software, Operating System; unbekannte Kategorien unter „Other"). `--status` zeigt zusätzlich eine ID-Spalte pro Zeile, damit Einträge gezielt mit `--device ID` ausgewählt werden können.
-
-`--check` (Standard) zeigt je Kategorie eine Sektion und je Eintrag eine Zeile:
+Example:
 
 ```text
-<ID>  <Anzeigename>  Ausgangsstand (N): v1, v2, ...   # erste erfolgreiche Prüfung
-<ID>  <Anzeigename>  neu: v3, v4                       # neu gefundene Versionen
-<ID>  <Anzeigename>  keine Änderung                    # keine neuen Versionen
+Known:  6.3.24, 6.3.26
+Current: 6.3.24, 6.3.26, 6.3.27
+New:    6.3.27
 ```
 
-`--status` gibt den gespeicherten Zustand tabellarisch aus:
+`6.3.27` is only a hypothetical example version here.
+
+A newly appearing older entry is also reported. Changes to release notes or download links with unchanged version label are not detected. An already known version is not reported again, even if it was temporarily removed from the source.
+
+## 8. Output and Return Codes
+
+Regular results go to stdout, errors to stderr. Output is compact, one line per entry, without blank lines. Entries are grouped by category (Firmware, Software, Operating System; unknown categories under "Other"). Entry name and status are column-aligned.
+
+`--status` shows an additional `ID` column per row, so entries can be selected specifically with `--device ID`.
+
+`--check` (default) shows one section per category and one line per entry:
+
+```text
+<ID>  <Entry>  Baseline (N): v1, v2, ...   # first successful check
+<ID>  <Entry>  new: v3, v4                 # newly found versions
+<ID>  <Entry>  no changes                   # no new versions
+```
+
+`--status` outputs the stored state in a table:
 
 ```text
 ID                            Entry                                    Last check           Last version
@@ -422,9 +430,9 @@ ID                            Entry                                    Last chec
 <ID>                          <Entry>                                  2026-10-12 19:29:44  RE200(EU)_V4_210916
 ```
 
-`Last version` ist die höchste erkannte Version unter Berücksichtigung der Blockanzahl als primäres Kriterium (mehr numerische Blöcke = neueres Format) und numerischem Blockvergleich innerhalb gleicher Blockanzahl (z. B. `1.10` > `1.9`). Noch nie geprüfte Einträge erscheinen mit `never checked` und `–`. Es erfolgt keine Netzabfrage und keine Änderung der Zustandsdatei.
+`Last version` is the highest detected version label using best-effort numeric sorting (block count as primary criterion, numeric block comparison within equal block counts; e. g. `6.1.1978418030` > `1978074000`, `1.10` > `1.9`). Not yet checked entries appear with `never checked` and `–`. No network request and no change to the state file.
 
-Mögliche Meldungen:
+Possible messages:
 
 ```text
 Baseline (N): ...
@@ -435,161 +443,161 @@ Configuration error: ...
 Storage error: ...
 ```
 
-Konfigurationsfehler werden vor jeder Netzabfrage erkannt und nennen lokale ID, Profil-ID und gegebenenfalls das Feld:
+Configuration errors are detected before every network request and name local ID, profile ID, and possibly the field:
 
 ```text
 Configuration error: Entry 'coros-dura', profile 'coros.dura': Required field 'version_pattern' missing
 ```
 
-| Exit-Code | Bedeutung |
-|---|---|
-| `0` | Alle konfigurierten Prüfungen und Speicherung erfolgreich (auch ohne neue Einträge) bzw. `--status` erfolgreich |
-| `1` | Konfigurations-, Prüf- oder Speicherfehler |
+| Exit code | Meaning |
+|-----------|---------|
+| `0` | All configured checks and storage successful (also without new entries) or `--status` successful |
+| `1` | Configuration, check, or storage error |
 
-Es gibt keinen gesonderten Exit-Code für gefundene Updates und keine strukturierte JSON-Ausgabe.
+There is no separate exit code for found updates and no structured JSON output.
 
-## 9. Fehlerbehandlung und Speicherung
+## 9. Error Handling and Storage
 
-- Ein Gerätefehler verhindert nicht die Prüfung weiterer Geräte.
-- Bei fehlgeschlagener Prüfung bleibt der bisherige Zustand dieses Geräts erhalten.
-- Null Treffer werden nicht als „keine Updates“ interpretiert.
-- Erfolgreiche Geräteprüfungen werden auch dann gespeichert, wenn andere Geräte fehlschlagen.
-- Schreiben erfolgt zunächst in eine benachbarte `.tmp`-Datei; anschließend wird die Zieldatei mit `os.replace` ersetzt.
-- Das Elternverzeichnis der Zustandsdatei wird bei Bedarf angelegt.
-- Es gibt keine Dateisperre. Parallele Aufrufe mit derselben Zustandsdatei sind nicht unterstützt.
-- Terminalmeldung und Speicherung bilden keine Transaktion. Nach einem Speicherfehler kann eine Meldung beim nächsten Lauf erneut erscheinen.
-- Bei einem Konfigurationsfehler erfolgt eine verständliche Meldung auf `stderr`, Exitcode `1`, keine Netzabfrage, keine Änderung von `state.json` und kein unkontrollierter Traceback.
+- A device error does not prevent checking other entries.
+- On failed check, the previous state of this entry remains.
+- Zero hits are not interpreted as "no updates".
+- Successfully checked entries are stored even if other entries fail.
+- Writing first goes to a neighboring `.tmp` file; then the target file is replaced with `os.replace`.
+- The parent directory of the state file is created if needed.
+- No file lock. Concurrent invocations using the same state file are not supported.
+- Terminal message and storage do not form a transaction. After a storage error, the message may appear again on the next run.
+- On a configuration error, an understandable message on `stderr`, exit code `1`, no network request, no change of `state.json`, and no uncontrolled traceback.
 
-Mindestens behandelt werden: fehlende oder nicht lesbare Profildatei; ungültiges JSON oder Profil ist kein Objekt; nicht unterstützte Schema-Version; ungültige oder abweichende Profil-ID; fehlende oder falsch typisierte Pflichtfelder; unbekannter Quelltyp; ungültiger regulärer Ausdruck oder mehr als eine Klammergruppe; unbekannter Zeichensatz; ungültige Quell-URL; unerlaubte Felder im profilbasierten Eintrag; doppelte lokale Geräte-IDs; Dateipfad außerhalb des Profilverzeichnisses.
+At least handled: missing or unreadable profile file; invalid JSON or profile not an object; unsupported schema version; invalid or mismatched profile ID; missing or incorrectly typed required fields; unknown source type; invalid regular expression or more than one capture group; unknown charset; invalid source URL; disallowed fields in profile-based entry; duplicate local entry IDs; file path outside profile directory.
 
-Die Konfigurationsprüfung der Grundstruktur ist bewusst einfach. Profile und technische Quellkonfigurationen werden dagegen vor dem Abruf vollständig validiert. Abruffehler bleiben gerätebezogen und verhindern die Prüfung anderer korrekt konfigurierter Geräte nicht.
+The configuration check of the basic structure is intentionally simple. Profiles and technical source configurations are fully validated before fetching. Fetch errors remain entry-specific and do not prevent checking other correctly configured entries.
 
-## 10. Aktuelle Grenzen und Sicherheit
+## 10. Current Limits and Security
 
-- Kein automatischer Zeitplan, kein laufender Dienst.
-- Keine Push-, E-Mail- oder MQTT-Benachrichtigungen.
-- Keine Erfassung installierter Gerätefirmware.
-- Kein Vergleich „höher/niedriger“, keine Ermittlung der neuesten Version.
-- Keine Bestätigung gerätespezifischer Updatefreigabe.
-- Keine automatische Modell-, Hardware- oder Regionserkennung.
-- Keine Unterscheidung zwischen Beta und stabil, außer wenn die Quelle selbst passend eingeschränkt ist.
-- Keine JavaScript-Ausführung, Authentifizierung oder Pagination.
-- Keine automatische Firmwareinstallation.
-- Keine garantierte langfristige Stabilität der verwendeten Herstellerendpunkte.
-- URLs und Suchmuster werden als vertrauenswürdige lokale Konfiguration behandelt; nicht für ungeprüfte öffentliche Eingaben vorgesehen.
-- Geräteprofile werden nur über sichere Profil-IDs innerhalb des Profilverzeichnisses geladen; Symlinks dürfen nicht aus dem Verzeichnis herausführen. Profile enthalten keine Zugangsdaten und keine Laufzeitzustände.
-- Der User-Agent, Abruffrequenz und Netzwerkzugriff können das Verhalten der Herstellerquellen beeinflussen.
+- No automatic schedule and no running service.
+- No push, email, or MQTT notifications.
+- No collection of installed device firmware.
+- No best-effort "higher/lower" version comparison for upgrade decisions; the displayed "Last version" is the highest detected label using best-effort numeric sort, not a guarantee that an update is available.
+- No confirmation of device-specific update release.
+- No automatic model, hardware, or region detection.
+- No distinction between beta and stable unless the source itself is limited accordingly.
+- No JavaScript execution, authentication, pagination, or bypassing of HTTP blocks (e. g. HTTP 403).
+- No automatic firmware installation.
+- No guaranteed long-term stability of the manufacturer endpoints used.
+- URLs and search patterns are considered trusted local configuration and are not intended for unverified public input.
+- Entry profiles are loaded only via secure profile IDs within the profile directory; symlinks must not lead outside the directory. Profiles contain no credentials and no runtime states.
+- User-Agent, fetch frequency, and network access can influence the behavior of the manufacturer sources.
 
-Live-Verhalten: Die Ubiquiti-JSON-Struktur wurde anhand der vom Nutzer bereitgestellten Antwort konfiguriert. Die ursprüngliche Ubiquiti-HTML-Seite lieferte im Terminal keine Treffer für das XM-Dateinamenmuster. Für Shelly wurde der Einzelwert über `data → SHSW-1 → version` erfolgreich extrahiert. Die TP-Link-Bezeichnungen wurden mit urlwatch erfolgreich extrahiert; der direkte Abruf durch diesen Python-Prototyp muss separat bestätigt werden. Die Extraktions- und Vergleichslogik ist durch `tests/test_firmaware.py` offline abgedeckt; ein vollständiger Live-Integrationstest war nicht möglich. Das COROS-DURA-Profil ändert nichts am bekannten COROS-HTTP-403-Verhalten und ist keine Lösung dafür.
+Live behavior: The Ubiquiti JSON structure was configured based on the response provided by the user. The original Ubiquiti HTML page provided no hits for the XM filename pattern in the terminal. For Shelly, the single value was successfully extracted via `data → SHSW-1 → version`. The TP-Link labels were successfully extracted with urlwatch; direct fetching by this Python prototype must be confirmed separately. The extraction and comparison logic is covered offline by `tests/test_firmaware.py`; a complete live integration test was not possible. The COROS-DURA profile does not change the known COROS HTTP-403 behavior and is not a solution for it.
 
-## 11. Akzeptanzkriterien / manuelle Tests
+## 11. Acceptance Criteria / Manual Tests
 
-| Fall | Erwartung |
-|---|---|
-| Erste erfolgreiche Prüfung | Versionen als Ausgangsstand speichern, keine Update-Meldung |
-| Identische Quelle beim zweiten Lauf | Keine neuen Firmwareeinträge |
-| Zusätzliche unbekannte Version | Einmalige Meldung und anschließende Speicherung |
-| Derselbe Eintrag beim nächsten Lauf | Keine erneute Meldung |
-| Zusätzliche ältere Version | Ebenfalls als neu gefundener Eintrag melden |
-| Doppelte Treffer | Nur einmal speichern und melden |
-| Version verschwindet aus Quelle | Nicht aus `known_versions` entfernen |
-| Leere Extraktion | Prüffehler, bisherigen Zustand erhalten |
-| HTTP-, Dekodierungs- oder JSON-Fehler | Prüffehler, weiteres Gerät trotzdem prüfen |
-| JSON-Eintrag mit `enabled: false` | Überspringen |
-| Fehlendes Versionsfeld in aktivem JSON-Eintrag | Geräteprüfung fehlschlagen lassen |
-| `json_value` mit gültigem Pfad | Genau eine Version als Ausgangsstand speichern |
-| `json_value`: fehlender Pfad oder Wert ist keine Zeichenfolge | Prüffehler, bisherigen Zustand erhalten |
-| Doppelte Geräte-IDs | Konfigurationsfehler |
-| Fehlende Zustandsdatei | Leeren Zustand verwenden und Datei bei Speicherung erzeugen |
-| Aufruf aus anderem Arbeitsverzeichnis | Standarddateien beim Skript verwenden |
-| Geänderte Geräte-ID | Neues Gerät initialisieren; alter Zustandsdatensatz bleibt erhalten |
-| Gültiges Textprofil | Technische Felder korrekt übernommen |
-| Gültiges JSON-Profil | Vorhandener JSON-Extraktor verwendbar |
-| Gültiges JSON-Value-Profil | Vorhandener Pfadextraktor verwendbar |
-| Lokale ID unterscheidet sich von Profil-ID | Lokale ID bleibt Zustandsschlüssel |
-| Lokaler Name vorhanden | Überschreibt den Profilnamen |
-| Kein lokaler Name | Profilname wird verwendet |
-| Gemischte profilbasierte und direkte Einträge | Beide Formate werden aufgelöst |
-| Zwei Geräte mit demselben Profil | Jeweils eigene lokale ID |
-| Umstellung auf Profil mit gleicher lokaler ID | Gespeicherter Versionsstand bleibt erhalten |
-| Technische Felder im profilbasierten Eintrag | Konfigurationsfehler, kein stilles Ignorieren |
-| Fehlende Profildatei / ungültiges JSON / kein Objekt | Konfigurationsfehler |
-| Ungültige Profil-ID / abweichende Profil-ID / Schema-Version | Konfigurationsfehler |
-| Ungültige Quellfelder (Typ, URL, Regex, Zeichensatz) | Konfigurationsfehler vor dem Abruf |
-| Pfadmanipulation / Symlink außerhalb des Profilverzeichnisses | Zugriff abgelehnt |
-| `--profiles-dir` | Gewähltes Verzeichnis wird verwendet |
-| `--status` mit Profilen | Keine Netzwerkabfrage |
-| Ein ungültiges Profil | Keine Prüfung und keine Zustandsänderung |
-| Direkte Konfiguration ohne Profilverzeichnis | Funktioniert |
-| COROS-Extraktion aus Beispieldaten | `["3.0808.0", "3.0910.0"]` |
-| `--device <id>` | Nur dieser eine Eintrag wird geprüft/angezeigt |
-| `--device <id>` nicht existent | Konfigurationsfehler, Exitcode 1 |
-| `--status` ID-Spalte | Jede Zeile zeigt die Entry-ID |
-| Clustering nach Kategorie | Einträge gruppiert unter Firmware, Software, Operating System, Other |
-| Höchste Version anzeigen | `max(versions, key=version_sort_key)` statt letzter sortierter Eintrag |
+| Case | Expectation |
+|------|-------------|
+| First successful check | Versions stored as baseline, no update message |
+| Same source on second run | No new firmware entries |
+| Additional unknown version | One-time message and subsequent storage |
+| Same entry on next run | No repeated message |
+| Additional older version | Also reported as newly found entry |
+| Duplicate hits | Stored and reported only once |
+| Version disappears from source | Not removed from `known_versions` |
+| Empty extraction | Check error, previous state retained |
+| HTTP, decoding, or JSON error | Check error, next entry still checked |
+| JSON entry with `enabled: false` | Skipped |
+| Missing version field in active JSON entry | Entry check fails |
+| `json_value` with valid path | Exactly one version stored as baseline |
+| `json_value`: missing path or value not a string | Check error, previous state retained |
+| Duplicate entry IDs | Configuration error |
+| Missing state file | Empty state used, file created on storage |
+| Invocation from another working directory | Default files next to script used |
+| Changed entry ID | New entry initialized; old state record retained |
+| Valid text profile | Technical fields correctly taken over |
+| Valid JSON profile | Existing JSON extractor usable |
+| Valid JSON-Value profile | Existing path extractor usable |
+| Local ID differs from profile ID | Local ID remains state key |
+| Local name present | Overrides profile name |
+| No local name | Profile name used |
+| Mixed profile-based and direct entries | Both formats resolved |
+| Two entries with same profile | Each with own local ID |
+| Switching to profile with same local ID | Stored version state retained |
+| Technical fields in profile-based entry | Configuration error, no silent ignoring |
+| Missing profile file / invalid JSON / not an object | Configuration error |
+| Invalid profile ID / mismatched profile ID / schema version | Configuration error |
+| Invalid source fields (type, URL, regex, charset) | Configuration error before fetch |
+| Path manipulation / symlink outside profile directory | Access denied |
+| `--profiles-dir` | Chosen directory used |
+| `--status` with profiles | No network request |
+| One invalid profile | No check and no state change |
+| Direct configuration without profile directory | Works |
+| COROS extraction from sample data | `["3.0808.0", "3.0910.0"]` |
+| `--device <id>` | Only this one entry is checked/shown |
+| `--device <id>` not existent | Configuration error, exit code 1 |
+| `--status` ID column | Each row shows the entry ID |
+| Clustering by category | Entries grouped under Firmware, Software, Operating System, Other |
+| Highest version shown | `max(versions, key=version_sort_key)` instead of last sorted element |
 
-## 12. Mögliche nächste Schritte – nicht implementiert
+## 12. Possible Next Steps – Not Implemented
 
-Priorität und Umfang sind offen:
+Priority and scope are open:
 
-1. Weitere Verbesserungen der Fehlerdiagnosen bei Abrufproblemen.
-2. Release-Datum und Release-Notes-Link in Meldungen aufnehmen.
-3. Optional getrennte Initialisierung und Prüfmodus.
-4. Ein einfacher Zeitplan außerhalb des Skripts.
-5. Ein Benachrichtigungskanal.
-6. Gerätebezogene Erfassung installierter Versionen.
-7. Herstellerabhängiger fachlicher Versionsvergleich.
-8. Weitere Geräteprofile, beispielsweise für zusätzliche Modelle.
+1. Further improvements of error diagnostics for fetch problems.
+2. Release date and release notes link in messages.
+3. Optional separate initialization and check mode.
+4. A simple schedule outside the script.
+5. A notification channel.
+6. Entry-specific collection of installed versions.
+7. Manufacturer-specific semantic version comparison.
+8. More entry profiles, for example for additional models.
 
-Automatisierte Tests mit gespeicherten Beispielantworten sind inzwischen in `tests/test_firmaware.py` umgesetzt (siehe Abschnitt 3 und 11) und daher nicht mehr als offener Punkt geführt. Wiederverwendbare Geräteprofile sind mit Version 0.2 umgesetzt.
+Automated tests with stored example responses are now implemented in `tests/test_firmaware.py` (see sections 3 and 11) and are therefore no longer listed as an open point. Reusable entry profiles were implemented with version 0.2.
 
-Weboberfläche, Docker-Paket und Home-Assistant-Anbindung sind mögliche spätere Erweiterungen, keine Voraussetzung für den aktuellen Prototyp.
+Web interface, Docker package, and Home Assistant integration are possible later extensions, not a prerequisite for the current prototype.
 
-## 13. Profilassistent (`--create-profile`)
+## 13. Profile Wizard (`--create-profile`)
 
-Der Profilassistent erstellt dialoggeführt ein Text-/HTML-Geräteprofil, ohne dass der Nutzer das JSON-Schema oder reguläre Ausdrücke kennen muss. Er arbeitet ausschließlich regelbasiert: **keine KI, keine externen KI-Dienste, keine zusätzlichen Python-Abhängigkeiten**. Die einzige Datenübertragung ist der vom Nutzer ausgelöste Quellabruf.
+The profile wizard creates a text/HTML entry profile dialog-driven, without requiring knowledge of the JSON schema or regular expressions. It works exclusively rule-based: **no AI, no external AI services, no additional Python dependencies**. The only data transfer is the source fetch triggered by the user.
 
-### 13.1 Aufruf und Ablauf
+### 13.1 Invocation and Flow
 
 ```bash
 python3 firmaware.py --create-profile --profiles-dir ./profiles
 ```
 
-Dialogschritte:
+Dialog steps:
 
-1. **Gerät beschreiben:** Hersteller, Modell, Anzeigename (Vorschlag `<Hersteller> <Modell> – Firmware`) und Profil-ID. Der ID-Vorschlag wird aus Hersteller und Modell kleingeschrieben, auf ASCII normalisiert und bereinigt; die endgültige ID muss `[a-z0-9][a-z0-9._-]*` erfüllen.
-2. **Quelle abrufen:** URL eingeben. Zulässig sind nur HTTP/HTTPS mit Host, ohne Zugangsdaten und ohne Steuerzeichen; ein Fragment wird entfernt. Abruf über dieselbe Logik wie reguläre Prüfungen (30 s Timeout, feste Header), zusätzlich mit Größenlimit (5 MiB) und Prüfung jedes Weiterleitungsziels. Bei Dekodier-/HTTP-Fehlern kann die URL korrigiert oder ein expliziter Python-Zeichensatz gewählt werden.
-3. **Beispielversion erfassen:** eine auf der Seite sichtbare Versionsangabe (max. 100 Zeichen). Gemeint ist die **Quellversion** (veröffentlichte Firmwarebezeichnung), **nicht** die installierte Geräteversion.
-4. **Fundstelle auswählen:** alle exakten Vorkommen werden mit begrenztem Kontext (je 150 Zeichen) angezeigt. Bei mehreren Fundstellen ist eine ausdrückliche Auswahl nötig (Paginierung bei vielen Treffern); die erste Fundstelle wird nie automatisch übernommen. Steuerzeichen fremder Inhalte werden vor der Ausgabe entfernt.
-5. **Versionsformat vorschlagen:** aus einer festen Vorlagensammlung. Unterstützt werden Punktversion (`16.2.1`), Präfixversion (`V 3.0910.0`) und zusammengesetzte Version (`1.13/1.02`). Aus einer einzelnen Beispielversion ist die künftige Blockzahl nicht sicher ableitbar, daher werden zwei Varianten angeboten: exakte Blockzahl und „ein Block mehr". Jeder Kandidat hat genau eine erfassende Klammergruppe; Hilfsgruppen sind nicht erfassend. Führende Nullen bleiben erhalten, ein festes Präfix wird nicht in den Wert aufgenommen.
-6. **Validierung und Vorschau:** jeder Kandidat wird kompiliert, auf genau eine Gruppe geprüft und mit dem vorhandenen Extraktor getestet. Die Vorschau zeigt ID, Name, Hersteller/Modell, Quell-URL (und finale URL bei Weiterleitung), Zeichensatz, Bereich, erwarteten Wert, alle eindeutigen Versionen, Zahl der Fundstellen getrennt von der Zahl eindeutiger Werte sowie den Regex. Der Export verlangt eine ausdrückliche Bestätigung; optional wird vorher erneut abgerufen und getestet.
-7. **Export:** atomar über eine temporäre Nachbardatei, nur innerhalb des Profilverzeichnisses, kein stilles Überschreiben.
+1. **Describe entry:** manufacturer, model, display name (suggestion `<Manufacturer> <Model> – Firmware`), profile ID, and category (`firmware`, `software`, or `operating_system`; suggestion: `firmware`). The ID suggestion is lowercased, normalized to ASCII, and cleaned of disallowed characters; the user must confirm or change the suggestion. If no usable suggestion is possible, the ID is requested manually. The final ID must fully match `[a-z0-9][a-z0-9._-]*`.
+2. **Fetch source:** enter URL. Only HTTP/HTTPS with host, no credentials, no control characters; a fragment is removed before fetching. Fetch using the same logic as regular checks (30 s timeout, fixed headers), additionally with size limit (5 MiB) and validation of every redirect target. On decoding/HTTP error, the URL can be corrected or an explicit Python charset can be chosen.
+3. **Capture sample version:** a version label visible on the page (max. 100 characters). This means the **source version** (published firmware label), **not** the installed device version.
+4. **Select occurrence:** all exact occurrences are shown with limited context (150 characters each). With multiple occurrences, an explicit selection is needed (pagination with many hits); the first occurrence is never selected automatically. Control characters from foreign content are removed before output.
+5. **Suggest version format:** from a fixed template collection. Supported: dotted version (`16.2.1`), prefix version (`V 3.0910.0`), and composite version (`1.13/1.02`). From a single sample version, the future block count cannot be derived with certainty, so two variants are offered: exact block count and "one more block". Each candidate has exactly one capturing group; non-capturing helper groups are not used. Leading zeros are retained, a fixed prefix is not included in the value.
+6. **Validation and preview:** each candidate is compiled, checked for exactly one group, and tested with the existing extractor. The preview shows ID, name, manufacturer/model, source URL (and final URL on redirect), charset, scope, expected value, all unique versions, number of occurrences separated from number of unique values, and the regex. Export requires explicit confirmation; optionally a fresh fetch and test is done beforehand.
+7. **Export:** atomic via temporary neighbor file, only within the profile directory, no silent overwriting.
 
-Exitcodes: `0` Profil exportiert, `1` technischer Fehler oder Eingabeende, `130` Abbruch durch `Ctrl+C`. Bei Abbruch oder Fehler entsteht keine finale Profildatei und keine vorhandene Datei wird verändert.
+Exit codes: `0` profile exported, `1` technical error or unsupported source or end of input before completion, `130` abort via `Ctrl+C`. On abort or error, no final profile file is created and no existing file is modified. A newly created empty export directory may remain.
 
-### 13.2 Unterschied Ganzquellenmodus und Tabellenbereich
+### 13.2 Difference Between Full Source Mode and Table Row Scope
 
-Dieser Umfang deckt den **Ganzquellenmodus** ab: das Versionsmuster gilt für den gesamten, per `html.unescape()` normalisierten Inhalt, und alle Treffer werden zur Bestätigung angezeigt. Der in der ursprünglichen Anforderung beschriebene **Tabellenzeilen-Modus** (Begrenzung des Musters auf eine ausgewählte HTML-Tabellenzeile über einen Textanker) ist **nicht** enthalten. Ebenso ist der **Expertenmodus** (manuelle Eingabe eines vollständigen `version_pattern`) **nicht** enthalten. Formate außerhalb der festen Vorlagen werden deshalb mit einem Hinweis auf Korrektur abgelehnt. Eine Erweiterung um Tabellenbereich und Expertenmodus bleibt möglich; das Profilschema muss dafür unverändert bleiben (der Bereich wäre in `version_pattern` zu integrieren, keine neue `selector`-Eigenschaft).
+This scope covers the **full source mode**: the version pattern applies to the entire `html.unescape()`-normalized content, and all hits are shown for confirmation. The **table row mode** (limiting the pattern to a selected HTML table row via a text anchor) described in the original requirement is **not** included. Likewise, the **expert mode** (manual entry of a complete `version_pattern`) is **not** included. Formats outside the fixed templates are therefore rejected with a hint to correct. An extension by table row scope and expert mode remains possible; the profile schema must remain unchanged for that (the scope would be integrated into `version_pattern`, no new `selector` property).
 
-### 13.3 Schutz vor problematischen Regex
+### 13.3 Protection Against Problematic Regex
 
-Alle Kandidatentests laufen in einem **separaten Prozess** mit Zeitlimit (3 Sekunden, `multiprocessing` mit `spawn`-Kontext, plattformübergreifend ohne Unix-Signale). Bei Überschreitung wird der Prozess beendet und der Kandidat abgelehnt; es wird keine Profildatei exportiert. Diese Absicherung betrifft nur den Assistenten, nicht die regulären Prüfläufe.
+All candidate tests run in a **separate process** with a time limit (3 seconds, `multiprocessing` with `spawn` context, cross-platform without Unix signals). On timeout, the process is terminated and the candidate is rejected; no profile file is exported. This protection applies only to the wizard, not to regular check runs.
 
-### 13.4 Grenzen
+### 13.4 Limits
 
-- Keine KI und keine automatische semantische Bewertung.
-- Keine Weboberfläche, DOM-Auswahl, JavaScript-Ausführung oder Browserautomatisierung.
-- Keine Anmeldung, Cookies oder Umgehung von HTTP-Sperren (z. B. HTTP 403).
-- Keine automatischen Änderungen an `devices.json` oder `state.json`.
-- Kein allgemeingültiger HTML-Parser; die Version muss im direkt erhaltenen Inhalt stehen.
-- Ein Präfix mit Ziffern (z. B. `RE200(EU)_V4_`) wird von den Vorlagen nicht erkannt.
-- Der Assistent ist ein lokaler CLI-Abruf und **nicht** als öffentlich erreichbarer URL-Abrufdienst gedacht. Eine spätere Weboberfläche benötigt eine eigenständige SSRF-Sicherheitsanforderung.
+- No AI and no automatic semantic evaluation.
+- No web interface, DOM selection, JavaScript execution, or browser automation.
+- No login, cookies, or circumvention of HTTP blocks (e. g. HTTP 403).
+- No automatic changes to `devices.json` or `state.json`.
+- No general-purpose HTML parser; the version must be in the directly retrieved content.
+- A prefix with digits (e. g. `RE200(EU)_V4_`) is not recognized by the templates.
+- The wizard is a local CLI fetch and **not** intended as a publicly reachable URL fetch service. A later web interface requires a separate SSRF security requirement.
 
-### 13.5 Testergebnis und Export
+### 13.5 Test Result and Export
 
-Nach Erfolg meldet der Assistent ausdrücklich, dass nur die aktuelle Antwort erfolgreich getestet wurde und zukünftige Seitenänderungen oder Versionsformate nicht geprüft sind. Es werden keine Garantien wie „dauerhaft verifiziert" angegeben.
+After success, the wizard explicitly states that only the current response was successfully tested and that future page changes or version formats are not checked. No guarantees such as "permanently verified" are given.
 
-Das exportierte Profil entspricht Schema-Version 2 mit Pflichtfeld `category` und ist mit dem vorhandenen Resolver nutzbar. Beispiel:
+The exported profile corresponds to schema version 2 and is usable with the existing resolver. Example:
 
 ```json
 {
@@ -605,4 +613,4 @@ Das exportierte Profil entspricht Schema-Version 2 mit Pflichtfeld `category` un
 }
 ```
 
-Das exportierte Muster enthält die im Dialog bestätigten Grenzen; die Beispieladresse ist ein Platzhalter. `encoding` wird nur exportiert, wenn der Nutzer einen Zeichensatz ausdrücklich gewählt hat. Nach dem Export wird die Datei erneut geladen und validiert. Zur Einbindung zeigt der Assistent ein Beispiel für `devices.json`; bei einem bestehenden Gerät bleibt die lokale ID erhalten. `devices.json` und `state.json` werden durch den Assistenten nie verändert.
+The example address is a placeholder, not a predefined COROS source. The exported pattern must contain the limits confirmed in the dialog; the above regex merely illustrates the schema. `encoding` is exported only if the user explicitly chose a charset. After export, the file is reloaded and validated. For integration, the wizard shows an example for `devices.json`; with an existing entry, the local ID remains. `devices.json` and `state.json` are never modified by the wizard.
