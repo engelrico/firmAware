@@ -157,6 +157,20 @@ The full source type reference is in [`requirements/specification.md`](requireme
 
 ---
 
+## Documentation Sync Guardrail
+
+When changing `firmaware.py`, `profiles/*.json`, `devices.json`, `state.json`, `README.md`, or `requirements/*.md`, you must also update `requirements/specification.md`, `AGENTS.md`, and `CONTRIBUTING.md` to keep them consistent. All documentation must be in English.
+
+Before committing, verify:
+- [`requirements/specification.md`](requirements/specification.md) reflects any schema, CLI, output, or comparison changes
+- [`AGENTS.md`](AGENTS.md) reflects any CLI, profile schema, or output grouping changes
+- All documentation text is in English (no German)
+- All profile examples show `schema_version: 2` and the `category` field
+
+A dedicated [`docGuardian`](.opencode/agents/docGuardian.md) agent is available under `.opencode/agents/` to help verify documentation consistency before commits.
+
+---
+
 ## Questions?
 
 Open an issue on GitHub or contact the repository maintainer.

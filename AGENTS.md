@@ -135,6 +135,7 @@ python3 -m unittest discover -s tests -t .
 5. **Profile IDs must match `[a-z0-9][a-z0-9._-]*`.** No uppercase, no slashes, no spaces.
 6. **Tests must pass** after any change to `firmaware.py` or `tests/test_firmaware.py`.
 7. **All UI text, error messages, and documentation must be in English.**
+8. **Documentation Sync:** When changing `firmaware.py`, `profiles/*.json`, `devices.json`, `state.json`, `README.md`, or `requirements/*.md`, you must also update `requirements/specification.md`, `AGENTS.md`, and `CONTRIBUTING.md` to keep them consistent. All documentation must be in English.
 
 ---
 
