@@ -1298,12 +1298,23 @@ def print_interactive_list(
 
 
 def print_entry_actions(
-    device: Mapping[str, Any], state: Mapping[str, Any], index: int, total: int
+    device: Mapping[str, Any], state: Mapping[str, Any], index: int, total: int,
+    selected_action: int = 0,
 ) -> None:
-    """Print the action submenu for a selected entry."""
+    """Print the action submenu for a selected entry with arrow-key navigation."""
     entry_state = state.get("devices", {}).get(device["id"]) or {}
     versions = entry_state.get("known_versions") or []
     latest = max(versions, key=version_sort_key) if versions else "–"
+
+    actions = [
+        "Move up",
+        "Move down",
+        "Edit name",
+        "Duplicate entry",
+        "Delete entry",
+        "Disable / Enable",
+        "Back to list",
+    ]
 
     print()
     print("  ── Entry Actions ──────────────────────────────────────────")
@@ -1316,13 +1327,11 @@ def print_entry_actions(
     print(f"  Version:    {latest}")
     print(f"  Position:   {index + 1} of {total}")
     print()
-    print("  [1] Move up")
-    print("  [2] Move down")
-    print("  [3] Edit name")
-    print("  [4] Duplicate entry")
-    print("  [5] Delete entry")
-    print("  [6] Disable / Enable")
-    print("  [7] Back to list")
+    for i, label in enumerate(actions):
+        marker = "►" if i == selected_action else " "
+        print(f"  {marker} {label}")
+    print()
+    print("  ↑/↓  Navigate    Enter  Select    q  Back to list")
     print()
 
 
@@ -1353,13 +1362,29 @@ def move_entry(raw: list[Any], index: int, direction: int) -> int:
     return index
 
 
-def edit_entry_name(raw: list[Any], index: int) -> None:
-    """Prompt for a new display name and store it on the entry."""
+def edit_entry_name(raw: list[Any], index: int, resolved_name: str = "") -> None:
+    """Prompt for a new display name; the current value is pre-filled for editing."""
+    import readline
+
     entry = raw[index]
-    current = entry.get("name") or ""
-    print(f"  Current name: {current or '(from profile)'}")
-    new_name = prompt_nonempty("  New name: ")
-    entry["name"] = new_name
+    current = entry.get("name") or resolved_name or ""
+    display_label = current or "(from profile)"
+
+    def prefill() -> None:
+        readline.set_startup_hook(lambda: readline.insert_text(current))
+
+    print(f"  Editing name: {display_label}")
+    print("  (Edit the text and press Enter; leave empty to keep the profile name)")
+    try:
+        prefill()
+        new_name = input("  Name: ").strip()
+    finally:
+        readline.set_startup_hook()
+
+    if new_name and new_name != current:
+        entry["name"] = new_name
+    elif not new_name and "name" in entry:
+        del entry["name"]
 
 
 def duplicate_entry(raw: list[Any], index: int, existing_ids: set[str]) -> None:
@@ -1532,57 +1557,85 @@ def run_interactive(devices_path: Path, profiles_dir: Path) -> int:
                 return 0
             elif key == "up":
                 selected -= 1
+                if selected < 0:
+                    selected = len(raw_entries) - 1
             elif key == "down":
                 selected += 1
+                if selected >= len(raw_entries):
+                    selected = 0
             elif key == "\r" or key == "\n":
-                # Open actions submenu.
+                # Open actions submenu with arrow-key navigation.
                 entry = raw_entries[selected]
+                action_selected = 0
+                action_labels = [
+                    "Move up",
+                    "Move down",
+                    "Edit name",
+                    "Duplicate entry",
+                    "Delete entry",
+                    "Disable / Enable",
+                    "Back to list",
+                ]
+
                 while True:
                     display_entry = display_list[selected]
                     print_entry_actions(
-                        display_entry, {"devices": {}}, selected, len(raw_entries)
+                        display_entry, {"devices": {}}, selected,
+                        len(raw_entries), action_selected,
                     )
-                    action = input("  Choose action (1-7): ").strip()
+                    action_key = read_key()
 
-                    if action == "1":
-                        new_index = move_entry(raw_entries, selected, -1)
-                        if new_index != selected:
-                            selected = new_index
-                            dirty = True
-                            print("  Moved up.")
-                        else:
-                            print("  Already at top.")
-                    elif action == "2":
-                        new_index = move_entry(raw_entries, selected, 1)
-                        if new_index != selected:
-                            selected = new_index
-                            dirty = True
-                            print("  Moved down.")
-                        else:
-                            print("  Already at bottom.")
-                    elif action == "3":
-                        edit_entry_name(raw_entries, selected)
-                        dirty = True
-                        print("  Name updated.")
-                    elif action == "4":
-                        duplicate_entry(raw_entries, selected, existing_ids)
-                        dirty = True
-                    elif action == "5":
-                        before = len(raw_entries)
-                        delete_entry(raw_entries, selected, existing_ids)
-                        if len(raw_entries) < before:
-                            dirty = True
-                            if selected >= len(raw_entries) and selected > 0:
-                                selected -= 1
-                            if not raw_entries:
-                                break
-                    elif action == "6":
-                        toggle_entry(raw_entries, selected)
-                        dirty = True
-                    elif action == "7":
+                    if action_key == "up":
+                        action_selected -= 1
+                        if action_selected < 0:
+                            action_selected = len(action_labels) - 1
+                    elif action_key == "down":
+                        action_selected += 1
+                        if action_selected >= len(action_labels):
+                            action_selected = 0
+                    elif action_key == "q" or action_key == "escape":
                         break
+                    elif action_key == "\r" or action_key == "\n":
+                        if action_selected == 0:  # Move up
+                            new_index = move_entry(raw_entries, selected, -1)
+                            if new_index != selected:
+                                selected = new_index
+                                dirty = True
+                                print("  Moved up.")
+                            else:
+                                print("  Already at top.")
+                        elif action_selected == 1:  # Move down
+                            new_index = move_entry(raw_entries, selected, 1)
+                            if new_index != selected:
+                                selected = new_index
+                                dirty = True
+                                print("  Moved down.")
+                            else:
+                                print("  Already at bottom.")
+                        elif action_selected == 2:  # Edit name
+                            resolved_name = display_list[selected].get("name", "")
+                            edit_entry_name(raw_entries, selected, resolved_name)
+                            dirty = True
+                            print("  Name updated.")
+                        elif action_selected == 3:  # Duplicate
+                            duplicate_entry(raw_entries, selected, existing_ids)
+                            dirty = True
+                        elif action_selected == 4:  # Delete
+                            before = len(raw_entries)
+                            delete_entry(raw_entries, selected, existing_ids)
+                            if len(raw_entries) < before:
+                                dirty = True
+                                if selected >= len(raw_entries) and selected > 0:
+                                    selected -= 1
+                                if not raw_entries:
+                                    break
+                        elif action_selected == 5:  # Toggle enabled
+                            toggle_entry(raw_entries, selected)
+                            dirty = True
+                        elif action_selected == 6:  # Back to list
+                            break
                     else:
-                        print("  Invalid choice. Enter 1-7.")
+                        pass
             else:
                 pass
 
