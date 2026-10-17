@@ -1283,10 +1283,16 @@ def interactive_entry_line(index: int, device: Mapping[str, Any], selected: bool
     return f"  {marker} {index + 1:>2}. {name}{status}  ({label})"
 
 
+def clear_screen() -> None:
+    """Clear the terminal screen."""
+    os.system("cls" if os.name == "nt" else "clear")
+
+
 def print_interactive_list(
     entries: Sequence[Mapping[str, Any]], selected: int
 ) -> None:
     """Print the current entry list with a selection marker."""
+    clear_screen()
     print()
     print("  ── firmAware – Manage Entries ─────────────────────────────")
     print()
@@ -1302,6 +1308,7 @@ def print_entry_actions(
     selected_action: int = 0,
 ) -> None:
     """Print the action submenu for a selected entry with arrow-key navigation."""
+    clear_screen()
     entry_state = state.get("devices", {}).get(device["id"]) or {}
     versions = entry_state.get("known_versions") or []
     latest = max(versions, key=version_sort_key) if versions else "–"
@@ -1431,11 +1438,16 @@ def toggle_entry(raw: list[Any], index: int) -> None:
     print(f"  Entry is now {state_label}.")
 
 
-def run_interactive(devices_path: Path, profiles_dir: Path) -> int:
+def run_interactive(devices_path: Path, profiles_dir: Path, state_path: Path) -> int:
     """Interactive session to manage entries in devices.json."""
     print()
     print("  firmAware – Interactive Entry Manager")
     print("  Loading configuration …")
+
+    try:
+        device_state = load_state(state_path)
+    except (OSError, ValueError, TypeError):
+        device_state = {"devices": {}}
 
     try:
         config = load_devices_file(devices_path)
@@ -1580,7 +1592,7 @@ def run_interactive(devices_path: Path, profiles_dir: Path) -> int:
                 while True:
                     display_entry = display_list[selected]
                     print_entry_actions(
-                        display_entry, {"devices": {}}, selected,
+                        display_entry, device_state, selected,
                         len(raw_entries), action_selected,
                     )
                     action_key = read_key()
@@ -1732,7 +1744,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 1
 
     if args.interactive:
-        return run_interactive(args.devices, args.profiles_dir)
+        return run_interactive(args.devices, args.profiles_dir, args.state)
 
     try:
         config = read_json(args.devices)
