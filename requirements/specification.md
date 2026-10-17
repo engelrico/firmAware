@@ -52,11 +52,26 @@ Interactively create an entry profile:
 python3 firmaware.py --create-profile --profiles-dir ./profiles
 ```
 
-Interactively manage entries in `devices.json` (reorder, edit, duplicate, delete, disable/enable):
+Interactively manage entries in `devices.json` (reorder, edit, duplicate, delete, disable/enable, check, history):
 
 ```bash
 python3 firmaware.py --interactive
 ```
+
+The interactive mode opens an arrow-key navigable list of all entries. Selecting an entry opens a submenu with the following actions:
+
+| Action | Description |
+|--------|-------------|
+| Check now | Fetch the entry's source and show new versions; state is saved |
+| Version history | List all known versions from `state.json`, sorted |
+| Move up / Move down | Change the entry's position in `devices.json` |
+| Edit name | Change the local display name (pre-filled with the current value) |
+| Duplicate entry | Copy the entry with a new user-supplied ID |
+| Delete entry | Remove the entry after confirmation |
+| Disable / Enable | Toggle `enabled`; disabled entries are skipped during `--check` and shown as `[off]` |
+| Back to list | Return to the entry list |
+
+Changes are written to `devices.json` only when saving on exit.
 
 `--check`, `--status`, `--create-profile`, and `--interactive` are mutually exclusive. `--profiles-dir PATH` applies to all modes and is the export directory in create mode. The create mode branches before loading `devices.json` and `state.json`; both files do not need to exist for that mode.
 
@@ -106,10 +121,11 @@ An entry is configured either directly (with all technical fields in `devices.js
 | `id` | Yes | Local entry ID; unique state key |
 | `name` | No | Local display name; overrides the profile name for profile-based entries, otherwise the ID or profile name is shown |
 | `profile` | No | Reference to an entry profile; present = profile-based entry |
+| `enabled` | No | Boolean; `false` skips the entry during `--check`; default `true` |
 | `source_type` | Direct only | `text`, `json`, or `json_value` |
 | `source_url` | Direct only | URL of the source to fetch |
 
-If `profile` is set, **only** the fields `id`, `profile`, and `name` may occur. Technical fields such as `source_url`, `source_type`, `encoding`, or `version_pattern` are a configuration error; there is no silent overriding or ignoring. Individual technical settings remain possible via direct entries.
+If `profile` is set, **only** the fields `id`, `profile`, `name`, and `enabled` may occur. Technical fields such as `source_url`, `source_type`, `encoding`, or `version_pattern` are a configuration error; there is no silent overriding or ignoring. Individual technical settings remain possible via direct entries.
 
 Additional descriptive fields such as manufacturer, model, or hardware version are not evaluated.
 

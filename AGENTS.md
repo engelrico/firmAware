@@ -58,7 +58,7 @@ Every profile in `profiles/*.json` must conform to schema v2 as defined in [`req
 | `source_type` | Yes | `text`, `json`, or `json_value` |
 | `source_url` | Yes | Valid HTTP/HTTPS URL without credentials |
 
-Profile-based entries in `devices.json` may contain **only** `id`, `profile`, and `name`. Technical fields are a configuration error in profile-based entries.
+Profile-based entries in `devices.json` may contain **only** `id`, `profile`, `name`, and `enabled`. Technical fields are a configuration error in profile-based entries.
 
 ### Version Sorting
 
@@ -77,7 +77,7 @@ The `version_sort_key` function compares versions by **block count first** (more
 | `--check` | Check sources and update state (default) |
 | `--status` | Show stored state only, no network request |
 | `--create-profile` | Interactively create and export an entry profile |
-| `--interactive`, `-i` | Interactively manage entries (reorder, edit, duplicate, delete, disable) |
+| `--interactive`, `-i` | Interactively manage entries (check, history, reorder, edit, duplicate, delete, disable) |
 | `--device ID`, `-d ID` | Check or show only the entry with this ID |
 | `--devices PATH` | Path to `devices.json` |
 | `--state PATH` | Path to `state.json` |

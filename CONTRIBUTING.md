@@ -138,7 +138,7 @@ The full source type reference is in [`requirements/specification.md`](requireme
 | `--check` | Check sources and update state (default) |
 | `--status` | Show stored state only, no network request |
 | `--create-profile` | Interactively create and export an entry profile |
-| `--interactive`, `-i` | Interactively manage entries (reorder, edit, duplicate, delete, disable) |
+| `--interactive`, `-i` | Interactively manage entries (check, history, reorder, edit, duplicate, delete, disable) |
 | `--device ID`, `-d ID` | Check or show only the entry with this ID |
 | `--devices PATH` | Path to `devices.json` |
 | `--state PATH` | Path to `state.json` |
