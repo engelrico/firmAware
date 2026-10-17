@@ -1312,6 +1312,9 @@ def print_entry_actions(
     entry_state = state.get("devices", {}).get(device["id"]) or {}
     versions = entry_state.get("known_versions") or []
     latest = max(versions, key=version_sort_key) if versions else "–"
+    is_enabled = device.get("enabled", True)
+    status_label = "Enabled" if is_enabled else "Disabled [off]"
+    toggle_label = "Disable entry" if is_enabled else "Enable entry"
 
     actions = [
         "Move up",
@@ -1319,7 +1322,7 @@ def print_entry_actions(
         "Edit name",
         "Duplicate entry",
         "Delete entry",
-        "Disable / Enable",
+        toggle_label,
         "Back to list",
     ]
 
@@ -1330,6 +1333,7 @@ def print_entry_actions(
     print(f"  Category:   {interactive_category_label(device)}")
     if "profile" in device:
         print(f"  Profile:    {device['profile']}")
+    print(f"  Status:     {status_label}")
     print(f"  Last check: {format_timestamp(entry_state.get('last_checked'))}")
     print(f"  Version:    {latest}")
     print(f"  Position:   {index + 1} of {total}")
