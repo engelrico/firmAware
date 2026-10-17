@@ -46,7 +46,7 @@ SUPPORTED_SOURCE_TYPES = frozenset({SOURCE_TEXT, SOURCE_JSON, SOURCE_JSON_VALUE}
 
 PROFILE_SCHEMA_VERSION = 2
 PROFILE_ID_PATTERN = re.compile(r"[a-z0-9][a-z0-9._-]*")
-PROFILE_ENTRY_FIELDS = frozenset({"id", "profile", "name"})
+PROFILE_ENTRY_FIELDS = frozenset({"id", "profile", "name", "enabled"})
 
 PROFILE_CATEGORIES = frozenset({"firmware", "software", "operating_system"})
 CATEGORY_DISPLAY_NAMES = {
@@ -414,8 +414,12 @@ def resolve_device(device: Mapping[str, Any], profiles_dir: Path) -> dict[str, A
         if "name" in device:
             local_name = device.get("name")
             if not isinstance(local_name, str) or not local_name.strip():
-                raise ValueError(f"Device '{device_id}': Field 'name' is invalid")
+                raise ValueError(f"Entry '{device_id}': Field 'name' is invalid")
             resolved["name"] = local_name
+        if "enabled" in device:
+            if not isinstance(device["enabled"], bool):
+                raise ValueError(f"Entry '{device_id}': Field 'enabled' must be a boolean")
+            resolved["enabled"] = device["enabled"]
         return resolved
 
     context = f"Entry '{device_id}'"
@@ -424,6 +428,9 @@ def resolve_device(device: Mapping[str, Any], profiles_dir: Path) -> dict[str, A
         local_name = resolved.get("name")
         if not isinstance(local_name, str) or not local_name.strip():
             raise ValueError(f"{context}: Field 'name' is invalid")
+    if "enabled" in resolved:
+        if not isinstance(resolved["enabled"], bool):
+            raise ValueError(f"{context}: Field 'enabled' must be a boolean")
     validate_source_config(resolved, context)
     return resolved
 
@@ -493,6 +500,9 @@ def current_timestamp() -> str:
 def process_device(device: Mapping[str, Any], state: dict[str, Any], width: int) -> bool:
     """Check a single device and update the state on success."""
     name = display_name(device)
+    if device.get("enabled") is False:
+        print(f"{name:<{width}}  [disabled]")
+        return True
     try:
         versions = fetch_versions(device)
         previous = state["devices"].get(device["id"])
@@ -563,9 +573,11 @@ def print_status(devices: Sequence[Mapping[str, Any]], state: Mapping[str, Any])
         for device in category_devices:
             entry = stored.get(device["id"]) or {}
             versions = entry.get("known_versions") or []
+            enabled = device.get("enabled", True)
+            display_id = device["id"] if enabled else f"{device['id']} [off]"
             rows.append(
                 (
-                    device["id"],
+                    display_id,
                     display_name(device),
                     format_timestamp(entry.get("last_checked")),
                     max(versions, key=version_sort_key) if versions else "–",
@@ -1238,6 +1250,362 @@ def run_profile_assistant(profiles_dir: Path) -> int:
     return 0
 
 
+# --- Interactive mode ------------------------------------------------------
+
+
+def load_devices_file(path: Path) -> dict[str, Any]:
+    """Load devices.json from disk."""
+    if not path.exists():
+        return {"devices": []}
+    return read_json(path)
+
+
+def save_devices_file(path: Path, data: dict[str, Any]) -> None:
+    """Write devices.json to disk with consistent formatting."""
+    with path.open("w", encoding="utf-8") as handle:
+        json.dump(data, handle, indent=2, ensure_ascii=False)
+        handle.write("\n")
+
+
+def interactive_category_label(device: Mapping[str, Any]) -> str:
+    """Return a display label for the entry's category."""
+    category = device.get("category", "")
+    return CATEGORY_DISPLAY_NAMES.get(category, "Other")
+
+
+def interactive_entry_line(index: int, device: Mapping[str, Any], selected: bool) -> str:
+    """Render a single line in the interactive list."""
+    marker = "►" if selected else " "
+    enabled = device.get("enabled", True)
+    status = "" if enabled else "  [disabled]"
+    name = display_name(device)
+    label = interactive_category_label(device)
+    return f"  {marker} {index + 1:>2}. {name}{status}  ({label})"
+
+
+def print_interactive_list(
+    entries: Sequence[Mapping[str, Any]], selected: int
+) -> None:
+    """Print the current entry list with a selection marker."""
+    print()
+    print("  ── firmAware – Manage Entries ─────────────────────────────")
+    print()
+    for i, entry in enumerate(entries):
+        print(interactive_entry_line(i, entry, i == selected))
+    print()
+    print("  ↑/↓  Navigate    Enter  Open actions    q  Quit")
+    print()
+
+
+def print_entry_actions(
+    device: Mapping[str, Any], state: Mapping[str, Any], index: int, total: int
+) -> None:
+    """Print the action submenu for a selected entry."""
+    entry_state = state.get("devices", {}).get(device["id"]) or {}
+    versions = entry_state.get("known_versions") or []
+    latest = max(versions, key=version_sort_key) if versions else "–"
+
+    print()
+    print("  ── Entry Actions ──────────────────────────────────────────")
+    print(f"  Entry:      {display_name(device)}")
+    print(f"  ID:         {device['id']}")
+    print(f"  Category:   {interactive_category_label(device)}")
+    if "profile" in device:
+        print(f"  Profile:    {device['profile']}")
+    print(f"  Last check: {format_timestamp(entry_state.get('last_checked'))}")
+    print(f"  Version:    {latest}")
+    print(f"  Position:   {index + 1} of {total}")
+    print()
+    print("  [1] Move up")
+    print("  [2] Move down")
+    print("  [3] Edit name")
+    print("  [4] Duplicate entry")
+    print("  [5] Delete entry")
+    print("  [6] Disable / Enable")
+    print("  [7] Back to list")
+    print()
+
+
+def prompt_choice(prompt: str, valid: set[str]) -> str:
+    """Read a single choice from the user, looping until valid."""
+    while True:
+        answer = input(prompt).strip().lower()
+        if answer in valid:
+            return answer
+        print(f"  Please enter one of: {', '.join(sorted(valid))}")
+
+
+def prompt_nonempty(prompt: str) -> str:
+    """Read a non-empty string from the user."""
+    while True:
+        answer = input(prompt).strip()
+        if answer:
+            return answer
+        print("  Value cannot be empty.")
+
+
+def move_entry(raw: list[Any], index: int, direction: int) -> int:
+    """Move an entry up (-1) or down (+1); return the new index."""
+    target = index + direction
+    if 0 <= target < len(raw):
+        raw[index], raw[target] = raw[target], raw[index]
+        return target
+    return index
+
+
+def edit_entry_name(raw: list[Any], index: int) -> None:
+    """Prompt for a new display name and store it on the entry."""
+    entry = raw[index]
+    current = entry.get("name") or ""
+    print(f"  Current name: {current or '(from profile)'}")
+    new_name = prompt_nonempty("  New name: ")
+    entry["name"] = new_name
+
+
+def duplicate_entry(raw: list[Any], index: int, existing_ids: set[str]) -> None:
+    """Duplicate an entry; the user supplies a new unique ID."""
+    original = raw[index]
+    print(f"  Duplicating: {display_name(original)}")
+    while True:
+        new_id = prompt_nonempty("  New ID for the copy: ")
+        if not PROFILE_ID_PATTERN.fullmatch(new_id):
+            print("  ID must match [a-z0-9][a-z0-9._-]*")
+            continue
+        if new_id in existing_ids:
+            print(f"  ID '{new_id}' already exists.")
+            continue
+        break
+    import copy as _copy
+
+    clone = _copy.deepcopy(original)
+    clone["id"] = new_id
+    raw.append(clone)
+    existing_ids.add(new_id)
+    print(f"  Duplicated as '{new_id}' (added at end of list).")
+
+
+def delete_entry(raw: list[Any], index: int, existing_ids: set[str]) -> None:
+    """Delete an entry after confirmation."""
+    entry = raw[index]
+    name = display_name(entry)
+    answer = prompt_choice(f"  Delete '{name}'? (y/n): ", {"y", "n"})
+    if answer == "y":
+        existing_ids.discard(entry["id"])
+        del raw[index]
+        print(f"  Deleted '{name}'.")
+    else:
+        print("  Cancelled.")
+
+
+def toggle_entry(raw: list[Any], index: int) -> None:
+    """Toggle the enabled flag on an entry."""
+    entry = raw[index]
+    old = entry.get("enabled", True)
+    entry["enabled"] = not old
+    state_label = "enabled" if not old else "disabled"
+    print(f"  Entry is now {state_label}.")
+
+
+def run_interactive(devices_path: Path, profiles_dir: Path) -> int:
+    """Interactive session to manage entries in devices.json."""
+    print()
+    print("  firmAware – Interactive Entry Manager")
+    print("  Loading configuration …")
+
+    try:
+        config = load_devices_file(devices_path)
+    except (OSError, ValueError, TypeError) as error:
+        print(f"Configuration error: {error}", file=sys.stderr)
+        return 1
+
+    raw_entries = config.get("devices")
+    if not isinstance(raw_entries, list):
+        print("Configuration error: 'devices' must be a list", file=sys.stderr)
+        return 1
+
+    # Resolve entries for display (best-effort; unresolved entries still shown).
+    try:
+        resolved = resolve_devices(raw_entries, profiles_dir)
+    except Exception:
+        resolved = [dict(entry) for entry in raw_entries if isinstance(entry, Mapping)]
+
+    # Ensure every raw entry has a resolved counterpart for display.
+    if len(resolved) != len(raw_entries):
+        resolved = []
+        for entry in raw_entries:
+            if not isinstance(entry, Mapping):
+                continue
+            try:
+                flat = resolve_device(entry, profiles_dir)
+            except Exception:
+                flat = dict(entry)
+            resolved.append(flat)
+
+    existing_ids = {e["id"] for e in raw_entries if isinstance(e, Mapping) and "id" in e}
+
+    selected = 0
+    dirty = False
+
+    def reload_all() -> None:
+        nonlocal resolved
+        try:
+            resolved = resolve_devices(raw_entries, profiles_dir)
+        except Exception:
+            resolved = []
+            for entry in raw_entries:
+                if not isinstance(entry, Mapping):
+                    continue
+                try:
+                    flat = resolve_device(entry, profiles_dir)
+                except Exception:
+                    flat = dict(entry)
+                resolved.append(flat)
+
+    def read_key() -> str:
+        """Read a single keypress (arrow keys return 'up'/'down')."""
+        import termios
+        import tty
+
+        fd = sys.stdin.fileno()
+        saved = termios.tcgetattr(fd)
+        try:
+            tty.setraw(fd)
+            ch = sys.stdin.read(1)
+            if ch == "\x1b":
+                seq = sys.stdin.read(2)
+                if seq == "[A":
+                    return "up"
+                if seq == "[B":
+                    return "down"
+                return "escape"
+            return ch
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, saved)
+
+    try:
+        while True:
+            if not raw_entries:
+                print()
+                print("  No entries configured. Edit devices.json to add entries.")
+                return 0
+
+            if selected >= len(raw_entries):
+                selected = len(raw_entries) - 1
+            if selected < 0:
+                selected = 0
+
+            # Build a display list from the resolved entries.
+            display_list = []
+            for entry in raw_entries:
+                if not isinstance(entry, Mapping):
+                    display_list.append(dict(entry))
+                    continue
+                try:
+                    flat = resolve_device(entry, profiles_dir)
+                except Exception:
+                    flat = dict(entry)
+                display_list.append(flat)
+
+            print_interactive_list(display_list, selected)
+
+            key = read_key()
+            if key == "q":
+                if dirty:
+                    answer = prompt_choice(
+                        "  Save changes to devices.json? (y/n): ", {"y", "n"}
+                    )
+                    if answer == "y":
+                        try:
+                            save_devices_file(
+                                devices_path, {"devices": raw_entries}
+                            )
+                            print("  Saved.")
+                        except OSError as error:
+                            print(
+                                f"Storage error: {error}", file=sys.stderr
+                            )
+                            return 1
+                    else:
+                        print("  Discarded.")
+                else:
+                    print("  No changes to save.")
+                return 0
+            elif key == "up":
+                selected -= 1
+            elif key == "down":
+                selected += 1
+            elif key == "\r" or key == "\n":
+                # Open actions submenu.
+                entry = raw_entries[selected]
+                while True:
+                    display_entry = display_list[selected]
+                    print_entry_actions(
+                        display_entry, {"devices": {}}, selected, len(raw_entries)
+                    )
+                    action = input("  Choose action (1-7): ").strip()
+
+                    if action == "1":
+                        new_index = move_entry(raw_entries, selected, -1)
+                        if new_index != selected:
+                            selected = new_index
+                            dirty = True
+                            print("  Moved up.")
+                        else:
+                            print("  Already at top.")
+                    elif action == "2":
+                        new_index = move_entry(raw_entries, selected, 1)
+                        if new_index != selected:
+                            selected = new_index
+                            dirty = True
+                            print("  Moved down.")
+                        else:
+                            print("  Already at bottom.")
+                    elif action == "3":
+                        edit_entry_name(raw_entries, selected)
+                        dirty = True
+                        print("  Name updated.")
+                    elif action == "4":
+                        duplicate_entry(raw_entries, selected, existing_ids)
+                        dirty = True
+                    elif action == "5":
+                        before = len(raw_entries)
+                        delete_entry(raw_entries, selected, existing_ids)
+                        if len(raw_entries) < before:
+                            dirty = True
+                            if selected >= len(raw_entries) and selected > 0:
+                                selected -= 1
+                            if not raw_entries:
+                                break
+                    elif action == "6":
+                        toggle_entry(raw_entries, selected)
+                        dirty = True
+                    elif action == "7":
+                        break
+                    else:
+                        print("  Invalid choice. Enter 1-7.")
+            else:
+                pass
+
+    except (KeyboardInterrupt, EOFError):
+        print()
+        if dirty:
+            answer = prompt_choice(
+                "  Save changes to devices.json? (y/n): ", {"y", "n"}
+            )
+            if answer == "y":
+                try:
+                    save_devices_file(devices_path, {"devices": raw_entries})
+                    print("  Saved.")
+                except OSError as error:
+                    print(f"Storage error: {error}", file=sys.stderr)
+                    return 1
+            else:
+                print("  Discarded.")
+        else:
+            print("  No changes to save.")
+        return 0
+
+
 # --- Entry point -----------------------------------------------------------
 
 
@@ -1260,6 +1628,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--create-profile",
         action="store_true",
         help="Interactively create and export a device profile",
+    )
+    mode.add_argument(
+        "--interactive",
+        "-i",
+        action="store_true",
+        help="Interactively manage entries (reorder, edit, duplicate, delete, disable)",
     )
     parser.add_argument("--devices", type=Path, default=base / "devices.json")
     parser.add_argument("--state", type=Path, default=base / "state.json")
@@ -1303,6 +1677,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         except AssistantAbort:
             print("Aborted; no profile file was created.", file=sys.stderr)
             return 1
+
+    if args.interactive:
+        return run_interactive(args.devices, args.profiles_dir)
 
     try:
         config = read_json(args.devices)

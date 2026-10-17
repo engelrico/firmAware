@@ -52,7 +52,13 @@ Interactively create an entry profile:
 python3 firmaware.py --create-profile --profiles-dir ./profiles
 ```
 
-`--check`, `--status`, and `--create-profile` are mutually exclusive. `--profiles-dir PATH` applies to all modes and is the export directory in create mode. The create mode branches before loading `devices.json` and `state.json`; both files do not need to exist for that mode.
+Interactively manage entries in `devices.json` (reorder, edit, duplicate, delete, disable/enable):
+
+```bash
+python3 firmaware.py --interactive
+```
+
+`--check`, `--status`, `--create-profile`, and `--interactive` are mutually exclusive. `--profiles-dir PATH` applies to all modes and is the export directory in create mode. The create mode branches before loading `devices.json` and `state.json`; both files do not need to exist for that mode.
 
 Custom file paths:
 
