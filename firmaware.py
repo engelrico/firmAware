@@ -1277,7 +1277,7 @@ def interactive_entry_line(index: int, device: Mapping[str, Any], selected: bool
     """Render a single line in the interactive list."""
     marker = "►" if selected else " "
     enabled = device.get("enabled", True)
-    status = "" if enabled else "  [disabled]"
+    status = "" if enabled else "  [off]"
     name = display_name(device)
     label = interactive_category_label(device)
     return f"  {marker} {index + 1:>2}. {name}{status}  ({label})"
@@ -1583,18 +1583,17 @@ def run_interactive(devices_path: Path, profiles_dir: Path, state_path: Path) ->
                 # Open actions submenu with arrow-key navigation.
                 entry = raw_entries[selected]
                 action_selected = 0
-                action_labels = [
-                    "Move up",
-                    "Move down",
-                    "Edit name",
-                    "Duplicate entry",
-                    "Delete entry",
-                    "Disable / Enable",
-                    "Back to list",
-                ]
 
                 while True:
-                    display_entry = display_list[selected]
+                    # Re-resolve the entry to reflect any changes.
+                    try:
+                        display_entry = resolve_device(
+                            raw_entries[selected], profiles_dir
+                        )
+                        display_list[selected] = display_entry
+                    except Exception:
+                        display_entry = dict(raw_entries[selected])
+
                     print_entry_actions(
                         display_entry, device_state, selected,
                         len(raw_entries), action_selected,
@@ -1604,10 +1603,10 @@ def run_interactive(devices_path: Path, profiles_dir: Path, state_path: Path) ->
                     if action_key == "up":
                         action_selected -= 1
                         if action_selected < 0:
-                            action_selected = len(action_labels) - 1
+                            action_selected = 6  # last action: Back to list
                     elif action_key == "down":
                         action_selected += 1
-                        if action_selected >= len(action_labels):
+                        if action_selected > 6:
                             action_selected = 0
                     elif action_key == "q" or action_key == "escape":
                         break
