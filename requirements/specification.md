@@ -417,9 +417,9 @@ Regular results go to stdout, errors to stderr. Output is compact, one line per 
 `--check` (default) shows one section per category and one line per entry:
 
 ```text
-<ID>  <Entry>  Baseline (N): v1, v2, ...   # first successful check
-<ID>  <Entry>  new: v3, v4                 # newly found versions
-<ID>  <Entry>  no changes                   # no new versions
+<Entry>  Baseline (N): v1, v2, ...   # first successful check
+<Entry>  new: v3, v4                 # newly found versions
+<Entry>  no changes                   # no new versions
 ```
 
 `--status` outputs the stored state in a table:
