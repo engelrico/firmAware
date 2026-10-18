@@ -6,6 +6,6 @@
   "model": "WR14E",
   "category": "firmware",
   "source_type": "text",
-  "source_url": "https://www.roboter-forum.com/resources/aktuellste-firmware-ab-2019-historie.54/updates",
+  "source_url": "https://www.roboter-forum.com/resources/aktuellste-firmware-ab-2019-historie.54/history",
   "version_pattern": "\\b([0-9]+(?:\\.[0-9]+)*(?:-[0-9]+)?[a-z]?[0-9]*)\\b"
 }
