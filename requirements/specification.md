@@ -63,7 +63,7 @@ The interactive mode opens an arrow-key navigable list of all entries. Selecting
 | Action | Description |
 |--------|-------------|
 | Check now | Fetch the entry's source and show new versions; state is saved |
-| Version history | List all known versions from `state.json`, sorted |
+| Version history | List all known versions from `state.json`, sorted, with discovery timestamps |
 | Move up / Move down | Change the entry's position in `devices.json` |
 | Edit name | Change the local display name (pre-filled with the current value) |
 | Duplicate entry | Copy the entry with a new user-supplied ID |
@@ -362,22 +362,27 @@ Example after successful check:
   "devices": {
     "nanostation-m5-xm": {
       "last_checked": "2026-10-11T18:00:00+02:00",
-      "known_versions": ["6.3.24", "6.3.26"]
+      "discovered_at": {
+        "6.3.24": "2026-09-15T10:00:00+02:00",
+        "6.3.26": "2026-10-11T18:00:00+02:00"
+      }
     },
     "shelly-1-gen1-stable": {
       "last_checked": "2026-10-11T18:00:05+02:00",
-      "known_versions": ["20230913-112003/v1.14.0-gcb84623"]
+      "discovered_at": {
+        "20230913-112003/v1.14.0-gcb84623": "2026-10-11T18:00:05+02:00"
+      }
     }
   }
 }
 ```
 
 - `last_checked`: Time of the last **successful** entry check, in local time zone with UTC offset and second precision. Not a timestamp of a failed attempt.
-- `known_versions`: All version labels successfully recognized for this entry profile so far.
-- Version labels are deduplicated and sorted lexicographically.
-- The sorting is **not** a semantic version comparison.
+- `discovered_at`: Mapping of every recognized version label to the timestamp when it was first discovered by a check.
 - Versions disappeared from the source remain known.
 - No longer configured entries are not automatically removed from the state.
+
+**Migration:** A legacy state file containing `known_versions` (a list) is automatically migrated to `discovered_at` on the first load; the `last_checked` timestamp is used as the discovery time for all existing versions.
 
 The state file is managed by the program. Stored under `state["devices"][device["id"]]`, where `device["id"]` is always the **local** entry ID (not the profile ID). Profile ID and local entry ID are separate: the profile ID describes the shared source, the local ID is the state key. When switching an entry to a profile, with the same local ID the same stored version state is retained; no migration is needed. Multiple local entries may reference the same profile; local IDs must be unique. The state format itself remains unchanged.
 
@@ -447,12 +452,12 @@ Regular results go to stdout, errors to stderr. Output is compact, one line per 
 `--status` outputs the stored state in a table:
 
 ```text
-ID                            Entry                                    Last check           Last version
-----------------------------  ---------------------------------------  -------------------  --------------------------------
-<ID>                          <Entry>                                  2026-10-12 19:29:44  RE200(EU)_V4_210916
+ID                            Entry                                    Last check           Last version                      First seen
+----------------------------  ---------------------------------------  -------------------  --------------------------------  -------------------
+<ID>                          <Entry>                                  2026-10-12 19:29:44  RE200(EU)_V4_210916               2026-10-12 19:29:44
 ```
 
-`Last version` is the highest detected version label using best-effort numeric sorting (block count as primary criterion, numeric block comparison within equal block counts; e. g. `6.1.1978418030` > `1978074000`, `1.10` > `1.9`). Not yet checked entries appear with `never checked` and `–`. No network request and no change to the state file.
+`Last version` is the highest detected version label using best-effort numeric sorting (block count as primary criterion, numeric block comparison within equal block counts; e. g. `6.1.1978418030` > `1978074000`, `1.10` > `1.9`). `First seen` shows when that version was first discovered by a check. Not yet checked entries appear with `never checked` and `–`. No network request and no change to the state file.
 
 Possible messages:
 
@@ -522,7 +527,7 @@ Live behavior: The Ubiquiti JSON structure was configured based on the response 
 | Same entry on next run | No repeated message |
 | Additional older version | Also reported as newly found entry |
 | Duplicate hits | Stored and reported only once |
-| Version disappears from source | Not removed from `known_versions` |
+| Version disappears from source | Not removed from `discovered_at` |
 | Empty extraction | Check error, previous state retained |
 | HTTP, decoding, or JSON error | Check error, next entry still checked |
 | JSON entry with `enabled: false` | Skipped |

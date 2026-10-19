@@ -112,21 +112,21 @@ class CompareTests(unittest.TestCase):
         self.assertEqual(fw.compare_versions(["a", "b"], None), ([], []))
 
     def test_new_versions_are_detected(self):
-        previous = {"known_versions": ["a", "b"]}
+        previous = {"discovered_at": {"a": "2026-01-01T00:00:00", "b": "2026-01-01T00:00:00"}}
         known, new = fw.compare_versions(["a", "b", "c"], previous)
-        self.assertEqual(known, ["a", "b"])
+        self.assertEqual(sorted(known), ["a", "b"])
         self.assertEqual(new, ["c"])
 
     def test_invalid_stored_state_fails(self):
         with self.assertRaisesRegex(ValueError, "Invalid stored version state"):
-            fw.compare_versions(["a"], {"known_versions": [1, 2]})
+            fw.compare_versions(["a"], {"discovered_at": {1: "x", 2: "y"}})
 
 
 class StateStorageTests(unittest.TestCase):
     def test_roundtrip_and_parent_creation(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "nested" / "state.json"
-            state = {"devices": {"x": {"known_versions": ["1"]}}}
+            state = {"devices": {"x": {"discovered_at": {"1": "2026-01-01T00:00:00"}}}}
             fw.save_state(path, state)
             self.assertEqual(fw.load_state(path), state)
             self.assertFalse(path.with_name(path.name + ".tmp").exists())
@@ -460,7 +460,8 @@ class CliTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("Baseline (2): v1, v2", out)
         self.assertEqual(
-            json.loads(self.state_path.read_text())["devices"]["d1"]["known_versions"], ["v1", "v2"]
+            sorted(json.loads(self.state_path.read_text())["devices"]["d1"]["discovered_at"]),
+            ["v1", "v2"],
         )
 
         code, out, _ = self._run({"https://example.com/u1": "v1 v2"})
@@ -471,7 +472,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("new: v3", out)
         self.assertEqual(
-            json.loads(self.state_path.read_text())["devices"]["d1"]["known_versions"],
+            sorted(json.loads(self.state_path.read_text())["devices"]["d1"]["discovered_at"]),
             ["v1", "v2", "v3"],
         )
 
@@ -581,7 +582,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("Baseline (2): 3.0808.0, 3.0910.0", out)
         self.assertEqual(
-            json.loads(self.state_path.read_text())["devices"]["coros-dura"]["known_versions"],
+            sorted(json.loads(self.state_path.read_text())["devices"]["coros-dura"]["discovered_at"]),
             ["3.0808.0", "3.0910.0"],
         )
 
@@ -592,7 +593,7 @@ class CliTests(unittest.TestCase):
                     "devices": {
                         "coros-dura": {
                             "last_checked": "2026-10-01T10:00:00+02:00",
-                            "known_versions": ["3.0808.0"],
+                            "discovered_at": {"3.0808.0": "2026-10-01T10:00:00+02:00"},
                         }
                     }
                 }

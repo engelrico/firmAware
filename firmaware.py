@@ -238,10 +238,29 @@ def fetch_versions(device: Mapping[str, Any]) -> list[str]:
 
 
 def load_state(path: Path) -> dict[str, Any]:
-    """Load the state or start with an empty state."""
-    if path.exists():
-        return read_json(path)
-    return {"devices": {}}
+    """Load the state or start with an empty state; migrates legacy format."""
+    if not path.exists():
+        return {"devices": {}}
+    state = read_json(path)
+    migrated = False
+    devices_state = state.get("devices")
+    if isinstance(devices_state, dict):
+        for entry in devices_state.values():
+            if not isinstance(entry, dict):
+                continue
+            if "known_versions" in entry and "discovered_at" not in entry:
+                last_checked = entry.get("last_checked") or current_timestamp()
+                entry["discovered_at"] = {
+                    version: last_checked for version in entry["known_versions"]
+                }
+                del entry["known_versions"]
+                migrated = True
+            elif "known_versions" in entry:
+                del entry["known_versions"]
+                migrated = True
+    if migrated:
+        save_state(path, state)
+    return state
 
 
 def validate_config(config: Mapping[str, Any], state: Mapping[str, Any]) -> list[Mapping[str, Any]]:
@@ -449,9 +468,14 @@ def compare_versions(
     """Determine known and newly added versions from the state."""
     if previous is None:
         return [], []
-    known = previous["known_versions"]
-    if not isinstance(known, list) or not all(isinstance(version, str) for version in known):
+    discovered = previous.get("discovered_at")
+    if discovered is None:
+        return [], []
+    if not isinstance(discovered, dict) or not all(
+        isinstance(k, str) for k in discovered
+    ):
         raise ValueError("Invalid stored version state")
+    known = list(discovered.keys())
     new_versions = sorted(set(versions) - set(known))
     return known, new_versions
 
@@ -508,9 +532,14 @@ def process_device(device: Mapping[str, Any], state: dict[str, Any], width: int)
         previous = state["devices"].get(device["id"])
         known, new_versions = compare_versions(versions, previous)
         print(f"{name:<{width}}  {check_summary(previous, versions, new_versions)}")
+        discovered = dict(previous.get("discovered_at") or {}) if previous else {}
+        now = current_timestamp()
+        for version in versions:
+            if version not in discovered:
+                discovered[version] = now
         state["devices"][device["id"]] = {
-            "last_checked": current_timestamp(),
-            "known_versions": sorted(set(known) | set(versions)),
+            "last_checked": now,
+            "discovered_at": discovered,
         }
         return True
     except Exception as error:  # a device error does not stop the remaining devices
@@ -572,19 +601,26 @@ def print_status(devices: Sequence[Mapping[str, Any]], state: Mapping[str, Any])
         rows = []
         for device in category_devices:
             entry = stored.get(device["id"]) or {}
-            versions = entry.get("known_versions") or []
+            discovered = entry.get("discovered_at") or {}
             enabled = device.get("enabled", True)
             display_id = device["id"] if enabled else f"{device['id']} [off]"
+            if discovered:
+                latest_version = max(discovered, key=version_sort_key)
+                first_seen = format_timestamp(discovered[latest_version])
+            else:
+                latest_version = "–"
+                first_seen = "–"
             rows.append(
                 (
                     display_id,
                     display_name(device),
                     format_timestamp(entry.get("last_checked")),
-                    max(versions, key=version_sort_key) if versions else "–",
+                    latest_version,
+                    first_seen,
                 )
             )
 
-        headers = ("ID", "Entry", "Last check", "Last version")
+        headers = ("ID", "Entry", "Last check", "Last version", "First seen")
         if rows:
             widths = [max(len(headers[i]), *(len(row[i]) for row in rows)) for i in range(len(headers))]
         else:
@@ -1310,8 +1346,13 @@ def print_entry_actions(
     """Print the action submenu for a selected entry with arrow-key navigation."""
     clear_screen()
     entry_state = state.get("devices", {}).get(device["id"]) or {}
-    versions = entry_state.get("known_versions") or []
-    latest = max(versions, key=version_sort_key) if versions else "–"
+    discovered = entry_state.get("discovered_at") or {}
+    if discovered:
+        latest = max(discovered, key=version_sort_key)
+        first_seen = format_timestamp(discovered[latest])
+    else:
+        latest = "–"
+        first_seen = "–"
     is_enabled = device.get("enabled", True)
     status_label = "Enabled" if is_enabled else "Disabled [off]"
     toggle_label = "Disable entry" if is_enabled else "Enable entry"
@@ -1338,7 +1379,8 @@ def print_entry_actions(
     print(f"  Status:     {status_label}")
     print(f"  Last check: {format_timestamp(entry_state.get('last_checked'))}")
     print(f"  Version:    {latest}")
-    print(f"  Known:      {len(versions)} version(s)")
+    print(f"  First seen: {first_seen}")
+    print(f"  Known:      {len(discovered)} version(s)")
     print(f"  Position:   {index + 1} of {total}")
     print()
     for i, label in enumerate(actions):
@@ -1458,9 +1500,14 @@ def check_entry_now(
         known, new_versions = compare_versions(versions, previous)
         summary = check_summary(previous, versions, new_versions)
         print(f"  Result: {summary}")
+        discovered = dict(previous.get("discovered_at") or {}) if previous else {}
+        now = current_timestamp()
+        for version in versions:
+            if version not in discovered:
+                discovered[version] = now
         state["devices"][device["id"]] = {
-            "last_checked": current_timestamp(),
-            "known_versions": sorted(set(known) | set(versions)),
+            "last_checked": now,
+            "discovered_at": discovered,
         }
         try:
             save_state(state_path, state)
@@ -1476,24 +1523,26 @@ def check_entry_now(
 def show_version_history(
     device: Mapping[str, Any], state: Mapping[str, Any]
 ) -> None:
-    """List all known versions for an entry from state.json."""
+    """List all known versions for an entry from state.json with discovery dates."""
     entry_state = state.get("devices", {}).get(device["id"]) or {}
-    versions = entry_state.get("known_versions") or []
+    discovered = entry_state.get("discovered_at") or {}
     name = display_name(device)
 
     print()
     print(f"  ── Version History: {name} ───────────────────────────")
     print(f"  Last check: {format_timestamp(entry_state.get('last_checked'))}")
     print()
-    if not versions:
+    if not discovered:
         print("  No known versions yet. Run a check first.")
     else:
-        sorted_versions = sorted(versions, key=version_sort_key)
+        sorted_versions = sorted(discovered, key=version_sort_key)
+        version_width = max(len(v) for v in sorted_versions)
         for i, version in enumerate(sorted_versions):
             marker = "►" if i == len(sorted_versions) - 1 else " "
-            print(f"  {marker} {version}")
+            discovered_at = format_timestamp(discovered[version])
+            print(f"  {marker} {version:<{version_width}}  discovered: {discovered_at}")
         print()
-        print(f"  Total: {len(versions)} version(s)")
+        print(f"  Total: {len(discovered)} version(s)")
     print()
     input("  Press Enter to continue …")
 

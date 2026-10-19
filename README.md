@@ -186,16 +186,18 @@ tool, not as a publicly reachable URL fetch service.
   "devices": {
     "nanostation-m5-xm": {
       "last_checked": "2026-10-15T07:17:54+02:00",
-      "known_versions": ["6.3.24", "6.3.26"]
+      "discovered_at": {
+        "6.3.24": "2026-09-15T10:00:00+02:00",
+        "6.3.26": "2026-10-15T07:17:54+02:00"
+      }
     }
   }
 }
 ```
 
 - `last_checked`: time of the last **successful** check (local, with UTC offset).
-- `known_versions`: all version labels detected so far (deduplicated, sorted
-  lexicographically).
-- The sorting is **not** a semantic version comparison.
+- `discovered_at`: maps every recognized version to the timestamp when it was
+  first discovered by a check.
 - Versions that have disappeared from the source remain known.
 - Storage is keyed by the **local** entry ID, not the profile ID. When
   switching to a profile, the same local version state is retained.
