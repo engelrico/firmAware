@@ -41,12 +41,6 @@ Show stored state without a network request:
 python3 firmaware.py --status
 ```
 
-Create a device profile interactively:
-
-```bash
-python3 firmaware.py --create-profile --profiles-dir ./profiles
-```
-
 Manage entries interactively (arrow-key menu):
 
 ```bash
@@ -65,7 +59,6 @@ python3 firmaware.py --devices /path/devices.json --state /path/state.json
 |---|---|
 | `--check` | Check sources and update state (default) |
 | `--status` | Only show stored state, no network request |
-| `--create-profile` | Create and export a device profile interactively |
 | `--interactive`, `-i` | Interactively manage entries (check, history, reorder, edit, duplicate, delete, disable) |
 | `--devices PATH` | Path to `devices.json` (default: next to the script) |
 | `--state PATH` | Path to `state.json` (default: next to the script) |
@@ -75,7 +68,7 @@ python3 firmaware.py --devices /path/devices.json --state /path/state.json
 | `--notify-config PATH` | Path to the SMTP config (default: `~/.config/firmaware/notify.json`) |
 | `--quiet` | Suppress normal output (for cron logs); errors still go to stderr |
 
-`--check`, `--status`, `--create-profile`, and `--interactive` are mutually exclusive.
+`--check`, `--status`, and `--interactive` are mutually exclusive.
 Without arguments, `devices.json`, `state.json`, and `profiles/` are looked up
 relative to the directory of the Python file – **not** relative to the current
 working directory. An explicitly relative `--profiles-dir`, however, is resolved
@@ -164,31 +157,24 @@ loaded exclusively from within the profiles directory; symlinks must not lead
 outside the directory. Profiles contain **no** credentials and **no** runtime
 state.
 
-## Profile wizard
+## Creating new profiles
 
-The dialog-driven wizard (`--create-profile`) creates a text/HTML profile
-without requiring knowledge of the JSON schema or regular expressions:
+Profiles are plain JSON files and are created **manually**, either by writing
+`profiles/<id>.json` yourself or with the bundled `profileCreator` agent
+(`.opencode/agents/profileCreator.md`), which walks you through the URL, the
+version label, and the required fields and then writes the profile and the
+matching `devices.json` entry.
 
-```bash
-python3 firmaware.py --create-profile --profiles-dir ./profiles
+Either way the file must follow the schema described above (`schema_version: 2`
+with a `category` field). A profile-based entry in `devices.json` then needs
+only `id`, `profile`, and optionally `name`/`enabled`:
+
+```json
+{ "id": "coros-dura", "profile": "coros.dura" }
 ```
 
-1. **Describe device:** manufacturer, model, display name, profile ID, and
-   category (`firmware`, `software`, or `operating_system`).
-2. **Fetch source:** enter an HTTP/HTTPS URL (30 s timeout, 5 MiB limit,
-   validation of every redirect target).
-3. **Capture sample version:** a firmware label visible on the page
-   (max. 100 characters).
-4. **Select match:** all matches are shown with context; the first match is
-   never selected automatically.
-5. **Suggest version format:** rule-based from fixed templates
-   (dot version, prefix version, composite version).
-6. **Validation and preview:** each candidate is tested; export only after
-   explicit confirmation, atomically and without silently overwriting.
-
-The wizard works purely rule-based – **no AI** and no external AI services. It
-**never** modifies `devices.json` or `state.json` and is intended as a local CLI
-tool, not as a publicly reachable URL fetch service.
+FirmAware never fetches a source while you are creating a profile; you supply
+the current version label yourself.
 
 ## Interactive entry manager
 
@@ -324,7 +310,7 @@ python3 -m unittest discover -s tests -t .
 
 ```text
 firmAware/
-├── firmaware.py                              # fetch, extraction, comparison, profiles, wizard
+├── firmaware.py                              # fetch, extraction, comparison, profiles, CLI
 ├── devices.json                              # personal device selection
 ├── profiles/                                 # reusable device profiles
 │   └── *.json
@@ -335,8 +321,7 @@ firmAware/
 ├── .gitignore                                # ignores state.json, notify.json, build artifacts
 └── requirements/
     ├── specification.md                      # project specification
-    ├── firmAware-requirement-geraeteprofile.md
-    └── firmAware-requirement-profilassistent.md
+    └── firmAware-requirement-geraeteprofile.md
 ```
 
 ## Limitations

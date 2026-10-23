@@ -46,12 +46,6 @@ Show stored state without a network request:
 python3 firmaware.py --status
 ```
 
-Interactively create an entry profile:
-
-```bash
-python3 firmaware.py --create-profile --profiles-dir ./profiles
-```
-
 Interactively manage entries in `devices.json` (reorder, edit, duplicate, delete, disable/enable, check, history):
 
 ```bash
@@ -73,7 +67,7 @@ The interactive mode opens an arrow-key navigable list of all entries. Selecting
 
 Changes are written to `devices.json` only when saving on exit.
 
-`--check`, `--status`, `--create-profile`, and `--interactive` are mutually exclusive. `--profiles-dir PATH` applies to all modes and is the export directory in create mode. The create mode branches before loading `devices.json` and `state.json`; both files do not need to exist for that mode.
+`--check`, `--status`, and `--interactive` are mutually exclusive. `--profiles-dir PATH` applies to the check, status, and interactive modes.
 
 Custom file paths:
 
@@ -489,6 +483,7 @@ Configuration error: Entry 'coros-dura', profile 'coros.dura': Required field 'v
 |-----------|---------|
 | `0` | All configured checks and storage successful (also without new entries) or `--status` successful |
 | `1` | Configuration, check, or storage error |
+| `130` | Abort via `Ctrl+C`; caught cleanly, no notification |
 
 There is no separate exit code for found updates and no structured JSON output.
 
@@ -589,69 +584,7 @@ Automated tests with stored example responses are now implemented in `tests/test
 
 Web interface, Docker package, and Home Assistant integration are possible later extensions, not a prerequisite for the current prototype.
 
-## 13. Profile Wizard (`--create-profile`)
-
-The profile wizard creates a text/HTML entry profile dialog-driven, without requiring knowledge of the JSON schema or regular expressions. It works exclusively rule-based: **no AI, no external AI services, no additional Python dependencies**. The only data transfer is the source fetch triggered by the user.
-
-### 13.1 Invocation and Flow
-
-```bash
-python3 firmaware.py --create-profile --profiles-dir ./profiles
-```
-
-Dialog steps:
-
-1. **Describe entry:** manufacturer, model, display name (suggestion `<Manufacturer> <Model> – Firmware`), profile ID, and category (`firmware`, `software`, or `operating_system`; suggestion: `firmware`). The ID suggestion is lowercased, normalized to ASCII, and cleaned of disallowed characters; the user must confirm or change the suggestion. If no usable suggestion is possible, the ID is requested manually. The final ID must fully match `[a-z0-9][a-z0-9._-]*`.
-2. **Fetch source:** enter URL. Only HTTP/HTTPS with host, no credentials, no control characters; a fragment is removed before fetching. Fetch using the same logic as regular checks (30 s timeout, fixed headers), additionally with size limit (5 MiB) and validation of every redirect target. On decoding/HTTP error, the URL can be corrected or an explicit Python charset can be chosen.
-3. **Capture sample version:** a version label visible on the page (max. 100 characters). This means the **source version** (published firmware label), **not** the installed device version.
-4. **Select occurrence:** all exact occurrences are shown with limited context (150 characters each). With multiple occurrences, an explicit selection is needed (pagination with many hits); the first occurrence is never selected automatically. Control characters from foreign content are removed before output.
-5. **Suggest version format:** from a fixed template collection. Supported: dotted version (`16.2.1`), prefix version (`V 3.0910.0`), and composite version (`1.13/1.02`). From a single sample version, the future block count cannot be derived with certainty, so two variants are offered: exact block count and "one more block". Each candidate has exactly one capturing group; non-capturing helper groups are not used. Leading zeros are retained, a fixed prefix is not included in the value.
-6. **Validation and preview:** each candidate is compiled, checked for exactly one group, and tested with the existing extractor. The preview shows ID, name, manufacturer/model, source URL (and final URL on redirect), charset, scope, expected value, all unique versions, number of occurrences separated from number of unique values, and the regex. Export requires explicit confirmation; optionally a fresh fetch and test is done beforehand.
-7. **Export:** atomic via temporary neighbor file, only within the profile directory, no silent overwriting.
-
-Exit codes: `0` profile exported, `1` technical error or unsupported source or end of input before completion, `130` abort via `Ctrl+C`. On abort or error, no final profile file is created and no existing file is modified. A newly created empty export directory may remain.
-
-### 13.2 Difference Between Full Source Mode and Table Row Scope
-
-This scope covers the **full source mode**: the version pattern applies to the entire `html.unescape()`-normalized content, and all hits are shown for confirmation. The **table row mode** (limiting the pattern to a selected HTML table row via a text anchor) described in the original requirement is **not** included. Likewise, the **expert mode** (manual entry of a complete `version_pattern`) is **not** included. Formats outside the fixed templates are therefore rejected with a hint to correct. An extension by table row scope and expert mode remains possible; the profile schema must remain unchanged for that (the scope would be integrated into `version_pattern`, no new `selector` property).
-
-### 13.3 Protection Against Problematic Regex
-
-All candidate tests run in a **separate process** with a time limit (3 seconds, `multiprocessing` with `spawn` context, cross-platform without Unix signals). On timeout, the process is terminated and the candidate is rejected; no profile file is exported. This protection applies only to the wizard, not to regular check runs.
-
-### 13.4 Limits
-
-- No AI and no automatic semantic evaluation.
-- No web interface, DOM selection, JavaScript execution, or browser automation.
-- No login, cookies, or circumvention of HTTP blocks (e. g. HTTP 403).
-- No automatic changes to `devices.json` or `state.json`.
-- No general-purpose HTML parser; the version must be in the directly retrieved content.
-- A prefix with digits (e. g. `RE200(EU)_V4_`) is not recognized by the templates.
-- The wizard is a local CLI fetch and **not** intended as a publicly reachable URL fetch service. A later web interface requires a separate SSRF security requirement.
-
-### 13.5 Test Result and Export
-
-After success, the wizard explicitly states that only the current response was successfully tested and that future page changes or version formats are not checked. No guarantees such as "permanently verified" are given.
-
-The exported profile corresponds to schema version 2 and is usable with the existing resolver. Example:
-
-```json
-{
-  "schema_version": 2,
-  "id": "coros.dura",
-  "name": "COROS DURA – Firmware",
-  "manufacturer": "COROS",
-  "model": "DURA",
-  "category": "firmware",
-  "source_type": "text",
-  "source_url": "https://example.org/releases",
-  "version_pattern": "\\bV\\s*([0-9]+(?:\\.[0-9]+){2,3})\\b"
-}
-```
-
-The example address is a placeholder, not a predefined COROS source. The exported pattern must contain the limits confirmed in the dialog; the above regex merely illustrates the schema. `encoding` is exported only if the user explicitly chose a charset. After export, the file is reloaded and validated. For integration, the wizard shows an example for `devices.json`; with an existing entry, the local ID remains. `devices.json` and `state.json` are never modified by the wizard.
-
-## 14. Notification (`--notify`)
+## 13. Notification (`--notify`)
 
 With `--notify`, a completed or aborted `--check` can additionally send a
 plain-text e-mail. The feature is intended for unattended runs (cron, NAS,
@@ -669,10 +602,11 @@ Raspberry Pi). It uses only the standard library (`smtplib`,
 
 - A mail is sent if the run found new versions **or** recorded at least one
   entry error. A run without changes and without errors sends nothing.
-- A manual abort via `Ctrl+C` never triggers a notification; the interrupt is
-  re-raised and the process exits with code `130` as before.
+- A manual abort via `Ctrl+C` is caught cleanly: a short notice is printed to
+  `stderr` and the process exits with code `130`. It never triggers a
+  notification.
 - The failure notification for aborted runs is sent from a top-level error
-  handler around the whole run (not for `--create-profile` or `--interactive`).
+  handler around the whole run (not for `--interactive`).
 - A notification failure (broken config, unreachable SMTP) is printed to
   `stderr` as `Notification error: ...` and never changes the exit code or
   crashes the check.

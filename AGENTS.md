@@ -21,7 +21,7 @@ This document helps AI agents working on the firmAware project understand the co
 
 ```
 firmAware/
-├── firmaware.py              # fetch, extraction, comparison, profiles, wizard, CLI
+├── firmaware.py              # fetch, extraction, comparison, profiles, CLI
 ├── devices.json              # personal entry selection (id + profile or direct config)
 ├── profiles/                 # reusable entry profiles (*.json)
 │   └── *.json                # schema v2 with category field
@@ -31,8 +31,7 @@ firmAware/
 │   └── test_firmaware.py     # automated tests (standard library only)
 ├── requirements/
 │   ├── specification.md      # detailed technical specification
-│   ├── firmAware-requirement-geraeteprofile.md
-│   └── firmAware-requirement-profilassistent.md
+│   └── firmAware-requirement-geraeteprofile.md
 ├── .opencode/
 │   └── agents/
 │       └── profileCreator.md # agent for interactive profile creation
@@ -77,7 +76,6 @@ The `version_sort_key` function compares versions **block by block as integers w
 |--------|---------|
 | `--check` | Check sources and update state (default) |
 | `--status` | Show stored state only, no network request |
-| `--create-profile` | Interactively create and export an entry profile |
 | `--interactive`, `-i` | Interactively manage entries (check, history, reorder, edit, duplicate, delete, disable) |
 | `--device ID`, `-d ID` | Check or show only the entry with this ID |
 | `--devices PATH` | Path to `devices.json` |
