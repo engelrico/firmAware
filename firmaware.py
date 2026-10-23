@@ -2062,6 +2062,7 @@ def run(args: argparse.Namespace) -> int:
 
     try:
         config = read_json(args.devices)
+        state_existed = args.state.exists()
         state = load_state(args.state)
         raw_devices = validate_config(config, state)
         devices = resolve_devices(raw_devices, args.profiles_dir)
@@ -2083,6 +2084,11 @@ def run(args: argparse.Namespace) -> int:
     if args.status:
         if not args.quiet:
             print_status(devices, state)
+        if not state_existed:
+            print(
+                "No state yet: state.json does not exist. Run --check first.",
+                file=sys.stderr,
+            )
         return 0
 
     failed = False

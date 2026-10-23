@@ -25,7 +25,8 @@ firmAware/
 ├── devices.json              # personal entry selection (id + profile or direct config)
 ├── profiles/                 # reusable entry profiles (*.json)
 │   └── *.json                # schema v2 with category field
-├── state.json                # known versions and last checks
+├── state.template.json       # empty state template (reference)
+├── state.json                # local runtime state (git-ignored, created on first --check)
 ├── tests/
 │   └── test_firmaware.py     # automated tests (standard library only)
 ├── requirements/
@@ -146,7 +147,8 @@ python3 -m unittest discover -s tests -t .
 5. **Profile IDs must match `[a-z0-9][a-z0-9._-]*`.** No uppercase, no slashes, no spaces.
 6. **Tests must pass** after any change to `firmaware.py` or `tests/test_firmaware.py`.
 7. **All UI text, error messages, and documentation must be in English.**
-8. **Documentation Sync:** When changing `firmaware.py`, `profiles/*.json`, `devices.json`, `state.json`, `README.md`, or `requirements/*.md`, you must also update `requirements/specification.md`, `AGENTS.md`, and `CONTRIBUTING.md` to keep them consistent. All documentation must be in English.
+8. **`state.json` is local runtime state.** It is git-ignored and must never be committed; the repo ships `state.template.json` (empty `{"devices": {}}`). `devices.json` stays tracked as personal configuration.
+9. **Documentation Sync:** When changing `firmaware.py`, `profiles/*.json`, `devices.json`, `state.json`, `README.md`, or `requirements/*.md`, you must also update `requirements/specification.md`, `AGENTS.md`, and `CONTRIBUTING.md` to keep them consistent. All documentation must be in English.
 
 ---
 

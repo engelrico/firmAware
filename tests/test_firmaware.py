@@ -6,6 +6,7 @@ import contextlib
 import io
 import json
 import re
+import shutil
 import sys
 import tempfile
 import unittest
@@ -134,6 +135,80 @@ class StateStorageTests(unittest.TestCase):
     def test_missing_state_starts_empty(self):
         with tempfile.TemporaryDirectory() as tmp:
             self.assertEqual(fw.load_state(Path(tmp) / "missing.json"), {"devices": {}})
+
+    def test_status_without_state_prints_hint(self):
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        devices = root / "devices.json"
+        devices.write_text(
+            json.dumps(
+                {
+                    "devices": [
+                        {
+                            "id": "d1",
+                            "name": "Entry",
+                            "source_type": "text",
+                            "source_url": "https://example.com/u1",
+                            "version_pattern": r"v[0-9]+",
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.object(fw, "fetch_source", side_effect=AssertionError("no network")):
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                code = fw.main(
+                    [
+                        "--status",
+                        "--devices", str(devices),
+                        "--state", str(root / "missing-state.json"),
+                    ]
+                )
+        self.assertEqual(code, 0)
+        self.assertIn("No state yet", err.getvalue())
+        self.assertIn("Run --check first", err.getvalue())
+
+    def test_status_with_state_prints_no_hint(self):
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        devices = root / "devices.json"
+        devices.write_text(
+            json.dumps(
+                {
+                    "devices": [
+                        {
+                            "id": "d1",
+                            "name": "Entry",
+                            "source_type": "text",
+                            "source_url": "https://example.com/u1",
+                            "version_pattern": r"v[0-9]+",
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        state = root / "state.json"
+        state.write_text(json.dumps({"devices": {}}), encoding="utf-8")
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.object(fw, "fetch_source", side_effect=AssertionError("no network")):
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                code = fw.main(
+                    [
+                        "--status",
+                        "--devices", str(devices),
+                        "--state", str(state),
+                    ]
+                )
+        self.assertEqual(code, 0)
+        self.assertNotIn("No state yet", err.getvalue())
+
+    def test_state_template_is_empty(self):
+        template = Path(__file__).resolve().parents[1] / "state.template.json"
+        self.assertTrue(template.exists(), "state.template.json must ship with the repo")
+        self.assertEqual(json.loads(template.read_text(encoding="utf-8")), {"devices": {}})
 
 
 class SourceValidationTests(unittest.TestCase):
@@ -609,6 +684,7 @@ class CliTests(unittest.TestCase):
     def test_status_with_profiles_does_not_fetch(self):
         self._write_profile(self._profile())
         self._write_devices([{"id": "coros-dura", "profile": "coros.dura"}])
+        self.state_path.write_text(json.dumps({"devices": {}}), encoding="utf-8")
         code, out, err = self._run_status()
         self.assertEqual(code, 0)
         self.assertEqual(err, "")

@@ -162,6 +162,7 @@ file is git-ignored. Never store credentials in `devices.json`,
 - On configuration error: message on `stderr`, exit code `1`, no network access, no changes to `state.json`
 - Device errors (fetch/extraction failures) do not stop other devices from being checked
 - State is written atomically via a `.tmp` file
+- `state.json` is local runtime state, git-ignored, and created by the first `--check` run; the repo ships `state.template.json` (empty `{"devices": {}}`). `--status` prints `No state yet: state.json does not exist. Run --check first.` to `stderr` when the state file is missing.
 - No file locking — concurrent invocations with the same state file are not supported
 - A failed notification (`--notify`) prints `Notification error: ...` to `stderr` and never changes the exit code or crashes the check
 - A manual abort (`Ctrl+C`) never sends a notification

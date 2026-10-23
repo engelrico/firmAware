@@ -184,6 +184,11 @@ tool, not as a publicly reachable URL fetch service.
 
 ## State: `state.json`
 
+`state.json` is your **private** runtime state. It is git-ignored and created
+automatically by the first `--check` run; it is never committed. The repository
+ships [`state.template.json`](state.template.json) with the empty structure for
+reference.
+
 ```json
 {
   "devices": {
@@ -210,7 +215,9 @@ Operating System, Other) and shows an `ID` column per row, so the ID can be
 copied for use with `--device`.
 
 If `state.json` is missing, an empty state is used. The file is written
-atomically via an adjacent `.tmp` file.
+atomically via an adjacent `.tmp` file. `--status` prints
+`No state yet: state.json does not exist. Run --check first.` to `stderr` when
+the state file does not exist yet.
 
 ## Regular checks and email notifications
 
@@ -289,10 +296,11 @@ firmAware/
 ├── devices.json                              # personal device selection
 ├── profiles/                                 # reusable device profiles
 │   └── *.json
-├── state.json                                # known versions and last checks
+├── state.template.json                       # empty state template (reference)
+├── state.json                                # local runtime state (git-ignored, created on first --check)
 ├── tests/
 │   └── test_firmaware.py                     # automated tests (standard library only)
-├── .gitignore                                # ignores state artifacts and notify.json
+├── .gitignore                                # ignores state.json, notify.json, build artifacts
 └── requirements/
     ├── specification.md                      # project specification
     ├── firmAware-requirement-geraeteprofile.md

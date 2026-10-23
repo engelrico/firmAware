@@ -389,6 +389,8 @@ Example after successful check:
 - Versions disappeared from the source remain known.
 - No longer configured entries are not automatically removed from the state.
 
+**Local and private:** `state.json` is per-user runtime state. It is git-ignored and never committed; the repository ships `state.template.json` with the empty structure `{"devices": {}}`. A missing state file is treated as empty and created by the first `--check` run. `--status` prints `No state yet: state.json does not exist. Run --check first.` to `stderr` when the state file does not exist yet (also with `--device` and `--quiet`).
+
 **Migration:** A legacy state file containing `known_versions` (a list) is automatically migrated to `discovered_at` on the first load; the `last_checked` timestamp is used as the discovery time for all existing versions.
 
 The state file is managed by the program. Stored under `state["devices"][device["id"]]`, where `device["id"]` is always the **local** entry ID (not the profile ID). Profile ID and local entry ID are separate: the profile ID describes the shared source, the local ID is the state key. When switching an entry to a profile, with the same local ID the same stored version state is retained; no migration is needed. Multiple local entries may reference the same profile; local IDs must be unique. The state format itself remains unchanged.
