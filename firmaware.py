@@ -491,16 +491,20 @@ def name_column_width(devices: Sequence[Mapping[str, Any]]) -> int:
 
 
 def version_sort_key(version: str) -> tuple:
-    """Sort key for version labels: block count first, then numeric blocks.
+    """Sort key for version labels: numeric block comparison with zero padding.
 
-    Newer version formats usually carry more numeric blocks (e. g.
-    ``6.1.1978418030`` vs. legacy ``1978074000``), so the block count is the
-    primary criterion. Within equal block counts, blocks are compared as
-    integers so ``"1.10"`` sorts above ``"1.9"``.
+    Blocks are compared as integers position by position, shorter labels are
+    zero-padded on the right so ``"27.1"`` sorts above ``"27.0.1"`` and
+    ``"1.10"`` above ``"1.9"``.
+
+    A single numeric block of one hundred million or more is treated as a
+    legacy label (e. g. Philips Hue ``1978074000``) and ranked below
+    multi-block labels (e. g. ``6.1.1978418030``).
     """
-    blocks = re.findall(r"[0-9]+", version or "")
-    numeric_blocks = [int(block) for block in blocks]
-    return (len(numeric_blocks), *numeric_blocks, version or "")
+    blocks = [int(block) for block in re.findall(r"[0-9]+", version or "")]
+    legacy = 0 if len(blocks) == 1 and blocks[0] >= 10**8 else 1
+    padded = (blocks + [0] * 12)[:12]
+    return (legacy, *padded, version or "")
 
 
 def check_summary(
@@ -1537,10 +1541,15 @@ def show_version_history(
     else:
         sorted_versions = sorted(discovered, key=version_sort_key)
         version_width = max(len(v) for v in sorted_versions)
+        newest_discovered = max(discovered, key=lambda v: discovered[v])
         for i, version in enumerate(sorted_versions):
             marker = "►" if i == len(sorted_versions) - 1 else " "
+            tag = "  ◄ newest" if version == newest_discovered else ""
             discovered_at = format_timestamp(discovered[version])
-            print(f"  {marker} {version:<{version_width}}  discovered: {discovered_at}")
+            print(
+                f"  {marker} {version:<{version_width}}  "
+                f"discovered: {discovered_at}{tag}"
+            )
         print()
         print(f"  Total: {len(discovered)} version(s)")
     print()

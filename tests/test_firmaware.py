@@ -1040,6 +1040,18 @@ class VersionSortKeyTests(unittest.TestCase):
             fw.version_sort_key("1978074000"), fw.version_sort_key("6.1.1978418030")
         )
 
+    def test_shorter_label_with_larger_value_wins(self):
+        # iOS: 27.1 is newer than 27.0.1 although it has fewer blocks.
+        self.assertLess(fw.version_sort_key("27.0.1"), fw.version_sort_key("27.1"))
+        self.assertLess(fw.version_sort_key("18.7.10"), fw.version_sort_key("27.1"))
+        self.assertLess(fw.version_sort_key("18.7.10"), fw.version_sort_key("27"))
+
+    def test_single_huge_block_is_ranked_below_multi_block(self):
+        # Philips Hue legacy labels are single huge numeric blocks.
+        self.assertLess(
+            fw.version_sort_key("196606010"), fw.version_sort_key("6.3.1978545030")
+        )
+
 
 if __name__ == "__main__":
     sys.exit(unittest.main())

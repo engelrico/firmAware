@@ -457,7 +457,7 @@ ID                            Entry                                    Last chec
 <ID>                          <Entry>                                  2026-10-12 19:29:44  RE200(EU)_V4_210916               2026-10-12 19:29:44
 ```
 
-`Last version` is the highest detected version label using best-effort numeric sorting (block count as primary criterion, numeric block comparison within equal block counts; e. g. `6.1.1978418030` > `1978074000`, `1.10` > `1.9`). `First seen` shows when that version was first discovered by a check. Not yet checked entries appear with `never checked` and `–`. No network request and no change to the state file.
+`Last version` is the highest detected version label using best-effort numeric sorting: numeric blocks are compared position by position as integers and shorter labels are zero-padded on the right, so `27.1` > `27.0.1`, `26.7.1` > `18.7.10`, and `1.10` > `1.9`. A single numeric block of 100 000 000 or more is treated as a legacy label and ranked below multi-block labels (`6.1.1978418030` > `1978074000`). `First seen` shows when that version was first discovered by a check. Not yet checked entries appear with `never checked` and `–`. No network request and no change to the state file.
 
 Possible messages:
 

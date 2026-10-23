@@ -62,7 +62,7 @@ Profile-based entries in `devices.json` may contain **only** `id`, `profile`, `n
 
 ### Version Sorting
 
-The `version_sort_key` function compares versions by **block count first** (more numeric blocks = newer), then numerically per block. Example: `6.1.1978418030` (3 blocks) > `1978074000` (1 block); `1.10` > `1.9`. See [`requirements/specification.md#7-comparison-logic-and-initialization`](requirements/specification.md#7-comparison-logic-and-initialization).
+The `version_sort_key` function compares versions **block by block as integers with zero padding** for shorter labels, so `27.1` > `27.0.1`, `26.7.1` > `18.7.10`, and `1.10` > `1.9`. A single numeric block of 100 000 000 or more is treated as a legacy label and ranked below multi-block labels: `6.1.1978418030` > `1978074000`. See [`requirements/specification.md#7-comparison-logic-and-initialization`](requirements/specification.md#7-comparison-logic-and-initialization).
 
 ### Wording (English Only)
 
