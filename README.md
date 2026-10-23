@@ -41,6 +41,8 @@ Show stored state without a network request:
 python3 firmaware.py --status
 ```
 
+![firmAware --status output](docs/status-table.png)
+
 Manage entries interactively (arrow-key menu):
 
 ```bash
@@ -79,6 +81,8 @@ A device ID can also be passed as a positional argument after `--check` or
 
 Exit codes: `0` success, `1` configuration, check, or storage error,
 `130` abort via `Ctrl+C`.
+
+![firmaware.py --help](docs/cli-help.png)
 
 ## Configuring devices
 
@@ -318,6 +322,9 @@ firmAware/
 ├── state.json                                # local runtime state (git-ignored, created on first --check)
 ├── tests/
 │   └── test_firmaware.py                     # automated tests (standard library only)
+├── docs/                                     # screenshots used in this README
+│   ├── cli-help.png                          # rendered --help output
+│   └── status-table.png                      # rendered --status output
 ├── .gitignore                                # ignores state.json, notify.json, build artifacts
 └── requirements/
     ├── specification.md                      # project specification
