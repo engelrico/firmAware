@@ -1,5 +1,7 @@
 # firmAware
 
+<a href="docs/firmAware_onepager.png"><img src="docs/firmAware_onepager.png" align="right" width="340" alt="firmAware one-pager (German): fetch sources, detect versions, compare with local state, report new labels"></a>
+
 **firmAware** checks public firmware sources for configured devices and
 reports previously unknown version labels in the terminal. Known versions are
 stored locally, so each run only highlights new entries.
@@ -10,6 +12,8 @@ The application runs locally, requires **no dedicated cloud service**, and relie
 > Note: firmAware observes published version lists. It does **not** check the
 > firmware installed on a device and does **not** confirm that an update is
 > available for a specific device.
+
+**Visual overview:** [one-pager (German)](docs/firmAware_onepager.png)
 
 ## How it works
 
@@ -324,7 +328,8 @@ firmAware/
 │   └── test_firmaware.py                     # automated tests (standard library only)
 ├── docs/                                     # screenshots used in this README
 │   ├── cli-help.png                          # rendered --help output
-│   └── status-table.png                      # rendered --status output
+│   ├── status-table.png                      # rendered --status output
+│   └── firmAware_onepager.png                # visual one-pager (German)
 ├── .gitignore                                # ignores state.json, notify.json, build artifacts
 └── requirements/
     ├── specification.md                      # project specification
