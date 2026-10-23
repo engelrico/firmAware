@@ -109,6 +109,11 @@
       "id": "worx-wr14e",
       "profile": "worx.wr14e",
       "enabled": true
+    },
+    {
+      "id": "tapo-c500",
+      "profile": "tapo.c500",
+      "enabled": true
     }
   ]
 }

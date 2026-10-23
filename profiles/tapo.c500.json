@@ -1,0 +1,11 @@
+{
+  "schema_version": 2,
+  "id": "tapo.c500",
+  "name": "TP-Link Tapo C500 – Firmware",
+  "manufacturer": "TP-Link",
+  "model": "Tapo C500",
+  "category": "firmware",
+  "source_type": "text",
+  "source_url": "https://www.tp-link.com/de/support/download/tapo-c500/#Firmware-Release-Notes",
+  "version_pattern": "\\b(Tapo\\s+C500\\(EU\\)_V[0-9]+_[0-9]+\\.[0-9]+\\.[0-9]+\\s+Build\\s+[0-9]+)\\b"
+}
