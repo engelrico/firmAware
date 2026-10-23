@@ -47,6 +47,12 @@ Create a device profile interactively:
 python3 firmaware.py --create-profile --profiles-dir ./profiles
 ```
 
+Manage entries interactively (arrow-key menu):
+
+```bash
+python3 firmaware.py --interactive
+```
+
 Custom file paths:
 
 ```bash
@@ -60,6 +66,7 @@ python3 firmaware.py --devices /path/devices.json --state /path/state.json
 | `--check` | Check sources and update state (default) |
 | `--status` | Only show stored state, no network request |
 | `--create-profile` | Create and export a device profile interactively |
+| `--interactive`, `-i` | Interactively manage entries (check, history, reorder, edit, duplicate, delete, disable) |
 | `--devices PATH` | Path to `devices.json` (default: next to the script) |
 | `--state PATH` | Path to `state.json` (default: next to the script) |
 | `--profiles-dir PATH` | Directory with device profiles (default: `profiles` next to the script) |
@@ -68,7 +75,7 @@ python3 firmaware.py --devices /path/devices.json --state /path/state.json
 | `--notify-config PATH` | Path to the SMTP config (default: `~/.config/firmaware/notify.json`) |
 | `--quiet` | Suppress normal output (for cron logs); errors still go to stderr |
 
-`--check`, `--status`, and `--create-profile` are mutually exclusive.
+`--check`, `--status`, `--create-profile`, and `--interactive` are mutually exclusive.
 Without arguments, `devices.json`, `state.json`, and `profiles/` are looked up
 relative to the directory of the Python file – **not** relative to the current
 working directory. An explicitly relative `--profiles-dir`, however, is resolved
@@ -101,8 +108,9 @@ may be mixed.
 }
 ```
 
-Profile-based entries may contain **only** the fields `id`, `profile`, and
-`name`. Technical fields such as `source_url` are a configuration error here.
+Profile-based entries may contain **only** the fields `id`, `profile`, `name`,
+and `enabled`. Technical fields such as `source_url` are a configuration error
+here.
 
 ### Direct
 
@@ -181,6 +189,30 @@ python3 firmaware.py --create-profile --profiles-dir ./profiles
 The wizard works purely rule-based – **no AI** and no external AI services. It
 **never** modifies `devices.json` or `state.json` and is intended as a local CLI
 tool, not as a publicly reachable URL fetch service.
+
+## Interactive entry manager
+
+`--interactive` (`-i`) opens an arrow-key navigable list of all entries in
+`devices.json`. Selecting an entry opens a submenu with these actions:
+
+| Action | Description |
+|---|---|
+| Check now | Fetch the entry's source and show new versions; state is saved |
+| Version history | List all known versions from `state.json`, sorted, with discovery timestamps and a `◄ newest` marker |
+| Move up / Move down | Change the entry's position in `devices.json` |
+| Edit name | Change the local display name (pre-filled with the current value) |
+| Duplicate entry | Copy the entry with a new user-supplied ID |
+| Delete entry | Remove the entry after confirmation |
+| Disable / Enable | Toggle `enabled`; disabled entries are skipped during `--check` and marked `[off]` / `[disabled]` |
+| Back to list | Return to the entry list |
+
+Changes are written to `devices.json` only after the save prompt on exit;
+discarding leaves the file untouched. Disabled entries are visible in the list
+and in `--status` / `--check` but skipped by the actual check.
+
+```bash
+python3 firmaware.py --interactive
+```
 
 ## State: `state.json`
 
