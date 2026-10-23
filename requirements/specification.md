@@ -97,6 +97,13 @@ python3 firmaware.py --check nanostation-m5-xm
 python3 firmaware.py --status nanostation-m5-xm
 ```
 
+With `--notify`, the check additionally sends a plain-text e-mail when new
+versions were found or the run could not complete. `--notify-config PATH`
+points to the SMTP configuration (default
+`~/.config/firmaware/notify.json`). `--quiet` suppresses the normal output
+(so cron logs stay small) but still writes errors to `stderr`. `--quiet`
+applies to `--check` and `--status`.
+
 Automated tests:
 
 ```bash
@@ -501,8 +508,8 @@ The configuration check of the basic structure is intentionally simple. Profiles
 
 ## 10. Current Limits and Security
 
-- No automatic schedule and no running service.
-- No push, email, or MQTT notifications.
+- No automatic schedule and no running service (scheduling is left to cron or a similar tool).
+- Email notification is opt-in via `--notify` and needs an external SMTP relay; no push or MQTT notifications.
 - No collection of installed device firmware.
 - No best-effort "higher/lower" version comparison for upgrade decisions; the displayed "Last version" is the highest detected label using best-effort numeric sort, not a guarantee that an update is available.
 - No confirmation of device-specific update release.
@@ -641,3 +648,54 @@ The exported profile corresponds to schema version 2 and is usable with the exis
 ```
 
 The example address is a placeholder, not a predefined COROS source. The exported pattern must contain the limits confirmed in the dialog; the above regex merely illustrates the schema. `encoding` is exported only if the user explicitly chose a charset. After export, the file is reloaded and validated. For integration, the wizard shows an example for `devices.json`; with an existing entry, the local ID remains. `devices.json` and `state.json` are never modified by the wizard.
+
+## 14. Notification (`--notify`)
+
+With `--notify`, a completed or aborted `--check` can additionally send a
+plain-text e-mail. The feature is intended for unattended runs (cron, NAS,
+Raspberry Pi). It uses only the standard library (`smtplib`,
+`email.message.EmailMessage`).
+
+### Trigger
+
+| Situation | Mail subject |
+|-----------|--------------|
+| New versions found | `firmAware: <n> new version(s) found` |
+| Some entries failed, run finished | `firmAware: <n> warning(s)` |
+| Configuration or storage error | `firmAware: check failed` |
+| Unexpected exception | `firmAware: check failed` |
+
+- A mail is sent if the run found new versions **or** recorded at least one
+  entry error. A run without changes and without errors sends nothing.
+- A manual abort via `Ctrl+C` never triggers a notification; the interrupt is
+  re-raised and the process exits with code `130` as before.
+- The failure notification for aborted runs is sent from a top-level error
+  handler around the whole run (not for `--create-profile` or `--interactive`).
+- A notification failure (broken config, unreachable SMTP) is printed to
+  `stderr` as `Notification error: ...` and never changes the exit code or
+  crashes the check.
+
+### SMTP configuration
+
+The configuration is read from `--notify-config PATH` (default
+`~/.config/firmaware/notify.json`) as a JSON object:
+
+| Field | Required | Meaning |
+|-------|----------|---------|
+| `smtp_host` | Yes | SMTP server hostname |
+| `smtp_user` | Yes | Login user (may be empty string for unauthenticated relay) |
+| `mail_to` | Yes | Recipient address or list of addresses |
+| `smtp_password` | No | Login password; sent only if user and password are non-empty |
+| `smtp_port` | No | Port; default `587` for `starttls`, `465` for `ssl` |
+| `smtp_security` | No | `starttls` (default), `ssl`, or `none` |
+| `mail_from` | No | From address; defaults to `smtp_user` |
+
+Credentials are stored **outside** the repository. `notify.json` is listed in
+`.gitignore` and must be protected with filesystem permissions
+(`chmod 600`). No credentials may be stored in `devices.json`, `profiles/`, or
+any committed file.
+
+### Exit codes
+
+Notification does not change the exit-code semantics: `0` for a successful run
+(even if a mail was sent), `1` for a configuration, check, or storage error.

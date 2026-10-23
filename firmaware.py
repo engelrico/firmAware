@@ -16,11 +16,14 @@ import json
 import multiprocessing
 import os
 import re
+import smtplib
 import sys
+import traceback
 import unicodedata
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
+from email.message import EmailMessage
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -281,6 +284,159 @@ def validate_config(config: Mapping[str, Any], state: Mapping[str, Any]) -> list
     return devices
 
 
+# --- Notification (SMTP) ---------------------------------------------------
+
+DEFAULT_NOTIFY_CONFIG = Path.home() / ".config" / "firmaware" / "notify.json"
+
+NOTIFY_REQUIRED_FIELDS = ("smtp_host", "smtp_user", "mail_to")
+NOTIFY_SECURITY_MODES = frozenset({"starttls", "ssl", "none"})
+
+
+def load_notify_config(path: Path) -> dict[str, Any]:
+    """Load and validate the SMTP notification configuration."""
+    data = read_json(path)
+    if not isinstance(data, dict):
+        raise ValueError("Notification config must be a JSON object")
+
+    missing = [field for field in NOTIFY_REQUIRED_FIELDS if field not in data]
+    if missing:
+        raise ValueError(f"Notification config missing: {', '.join(missing)}")
+
+    if not isinstance(data["smtp_host"], str) or not data["smtp_host"].strip():
+        raise ValueError("'smtp_host' must be a non-empty string")
+    if not isinstance(data["smtp_user"], str):
+        raise ValueError("'smtp_user' must be a string")
+
+    mail_to = data["mail_to"]
+    if isinstance(mail_to, str):
+        mail_to = [mail_to]
+        data["mail_to"] = mail_to
+    if not isinstance(mail_to, list) or not all(
+        isinstance(address, str) and address.strip() for address in mail_to
+    ):
+        raise ValueError("'mail_to' must be an address or a list of addresses")
+    if not mail_to:
+        raise ValueError("'mail_to' must not be empty")
+
+    security = data.get("smtp_security", "starttls")
+    if security not in NOTIFY_SECURITY_MODES:
+        raise ValueError(
+            f"'smtp_security' must be one of: {', '.join(sorted(NOTIFY_SECURITY_MODES))}"
+        )
+    data["smtp_security"] = security
+
+    if "smtp_port" in data and not isinstance(data["smtp_port"], int):
+        raise ValueError("'smtp_port' must be an integer")
+
+    if not data.get("mail_from"):
+        data["mail_from"] = data["smtp_user"]
+    return data
+
+
+def send_email(config: Mapping[str, Any], subject: str, body: str) -> None:
+    """Send a plain-text notification mail via SMTP."""
+    message = EmailMessage()
+    message["Subject"] = subject
+    message["From"] = config["mail_from"]
+    message["To"] = ", ".join(config["mail_to"])
+    message.set_content(body)
+
+    host = config["smtp_host"]
+    port = int(config.get("smtp_port") or (465 if config["smtp_security"] == "ssl" else 587))
+    security = config["smtp_security"]
+
+    if security == "ssl":
+        smtp: Any = smtplib.SMTP_SSL(host, port, timeout=REQUEST_TIMEOUT_SECONDS)
+    else:
+        smtp = smtplib.SMTP(host, port, timeout=REQUEST_TIMEOUT_SECONDS)
+
+    with smtp:
+        if security == "starttls":
+            smtp.starttls()
+        user = config.get("smtp_user")
+        password = config.get("smtp_password")
+        if user and password:
+            smtp.login(user, password)
+        smtp.send_message(message)
+
+
+def build_notification(
+    changes: Sequence[Mapping[str, Any]],
+    errors: Sequence[Mapping[str, Any]],
+) -> tuple[str, str]:
+    """Compose subject and plain-text body for discovered versions or warnings."""
+    new_count = sum(len(change.get("versions") or ()) for change in changes)
+    error_count = len(errors)
+
+    parts: list[str] = []
+    if new_count == 1:
+        parts.append("1 new version found")
+    elif new_count > 1:
+        parts.append(f"{new_count} new versions found")
+    if error_count == 1:
+        parts.append("1 warning")
+    elif error_count > 1:
+        parts.append(f"{error_count} warnings")
+    if not parts:
+        parts.append("no changes")
+    subject = "firmAware: " + ", ".join(parts)
+
+    lines: list[str] = []
+    if changes:
+        lines.append("New versions")
+        lines.append("-" * 12)
+        current_category = None
+        for change in changes:
+            category = change.get("category") or "Other"
+            if category != current_category:
+                lines.append("")
+                lines.append(category)
+                current_category = category
+            lines.append(f"  {change['name']}")
+            for version in change.get("versions") or ():
+                lines.append(f"    new: {version}")
+    if errors:
+        if lines:
+            lines.append("")
+        lines.append("Warnings")
+        lines.append("-" * 8)
+        for error in errors:
+            lines.append(f"  {error['name']}: {error['error']}")
+    return subject, "\n".join(lines)
+
+
+def send_notification(args: argparse.Namespace, subject: str, body: str) -> None:
+    """Send a notification if --notify is active; failures only go to stderr."""
+    if not getattr(args, "notify", False):
+        return
+    path = getattr(args, "notify_config", None) or DEFAULT_NOTIFY_CONFIG
+    try:
+        config = load_notify_config(path)
+        send_email(config, subject, body)
+    except Exception as error:  # a broken notification must not break the CLI
+        print(f"Notification error: {error}", file=sys.stderr)
+
+
+def notify_check_failed(args: argparse.Namespace, detail: str) -> None:
+    """Send a failure notification for an aborted check."""
+    body = (
+        "The firmAware check aborted before it could complete.\n"
+        "\n"
+        f"Error:\n{detail}\n"
+        "\n"
+        "Run the check manually for details:\n"
+        "  python3 firmaware.py --check\n"
+    )
+    send_notification(args, "firmAware: check failed", body)
+
+
+def format_failure(error: BaseException) -> str:
+    """Render an exception for a failure notification, including the traceback."""
+    traceback_lines = traceback.format_exc().strip().splitlines()
+    tail = "\n".join(traceback_lines[-12:])
+    return f"{type(error).__name__}: {error}\n\nTraceback:\n{tail}"
+
+
 # --- Device profiles -------------------------------------------------------
 
 
@@ -525,17 +681,36 @@ def current_timestamp() -> str:
     return datetime.now().astimezone().isoformat(timespec="seconds")
 
 
-def process_device(device: Mapping[str, Any], state: dict[str, Any], width: int) -> bool:
+def process_device(
+    device: Mapping[str, Any],
+    state: dict[str, Any],
+    width: int,
+    *,
+    changes: list[Mapping[str, Any]] | None = None,
+    errors: list[Mapping[str, Any]] | None = None,
+    quiet: bool = False,
+) -> bool:
     """Check a single device and update the state on success."""
     name = display_name(device)
     if device.get("enabled") is False:
-        print(f"{name:<{width}}  [disabled]")
+        if not quiet:
+            print(f"{name:<{width}}  [disabled]")
         return True
     try:
         versions = fetch_versions(device)
         previous = state["devices"].get(device["id"])
         known, new_versions = compare_versions(versions, previous)
-        print(f"{name:<{width}}  {check_summary(previous, versions, new_versions)}")
+        if not quiet:
+            print(f"{name:<{width}}  {check_summary(previous, versions, new_versions)}")
+        if new_versions and changes is not None:
+            changes.append(
+                {
+                    "id": device["id"],
+                    "name": name,
+                    "category": device.get("category", ""),
+                    "versions": list(new_versions),
+                }
+            )
         discovered = dict(previous.get("discovered_at") or {}) if previous else {}
         now = current_timestamp()
         for version in versions:
@@ -548,6 +723,8 @@ def process_device(device: Mapping[str, Any], state: dict[str, Any], width: int)
         return True
     except Exception as error:  # a device error does not stop the remaining devices
         print(f"{name:<{width}}  Check error: {error}", file=sys.stderr)
+        if errors is not None:
+            errors.append({"name": name, "error": str(error)})
         return False
 
 
@@ -1832,6 +2009,23 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Directory with device profiles (default: ./profiles next to the script)",
     )
     parser.add_argument(
+        "--notify",
+        action="store_true",
+        help="Send an e-mail if new versions were found or the check failed",
+    )
+    parser.add_argument(
+        "--notify-config",
+        type=Path,
+        default=Path.home() / ".config" / "firmaware" / "notify.json",
+        metavar="PATH",
+        help="Path to the SMTP notification config (default: ~/.config/firmaware/notify.json)",
+    )
+    parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress normal output (for cron logs); errors still go to stderr",
+    )
+    parser.add_argument(
         "--device",
         "-d",
         type=str,
@@ -1848,10 +2042,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def main(argv: Sequence[str] | None = None) -> int:
+def run(args: argparse.Namespace) -> int:
     """Run the check or status output depending on the argument."""
-    args = parse_args(argv)
-
     if args.create_profile:
         try:
             return run_profile_assistant(args.profiles_dir)
@@ -1875,6 +2067,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         devices = resolve_devices(raw_devices, args.profiles_dir)
     except (OSError, ValueError, KeyError, TypeError) as error:
         print(f"Configuration error: {error}", file=sys.stderr)
+        notify_check_failed(args, f"Configuration error: {error}")
         return 1
 
     if args.device_id and not args.device:
@@ -1888,11 +2081,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         devices = matching
 
     if args.status:
-        print_status(devices, state)
+        if not args.quiet:
+            print_status(devices, state)
         return 0
 
     failed = False
     width = name_column_width(devices)
+    changes: list[Mapping[str, Any]] = []
+    errors: list[Mapping[str, Any]] = []
 
     grouped: dict[str, list[Mapping[str, Any]]] = {category: [] for category in CATEGORY_ORDER}
     other: list[Mapping[str, Any]] = []
@@ -1907,27 +2103,52 @@ def main(argv: Sequence[str] | None = None) -> int:
         category_devices = grouped.get(category, [])
         if not category_devices:
             continue
-        print()
-        print(f"{CATEGORY_DISPLAY_NAMES.get(category, category)}:")
+        if not args.quiet:
+            print()
+            print(f"{CATEGORY_DISPLAY_NAMES.get(category, category)}:")
         # No short-circuit: all entries are checked even after an error.
         for device in category_devices:
-            if not process_device(device, state, width):
+            if not process_device(
+                device, state, width, changes=changes, errors=errors, quiet=args.quiet
+            ):
                 failed = True
 
     if other:
-        print()
-        print("Other:")
+        if not args.quiet:
+            print()
+            print("Other:")
         # No short-circuit: all entries are checked even after an error.
         for device in other:
-            if not process_device(device, state, width):
+            if not process_device(
+                device, state, width, changes=changes, errors=errors, quiet=args.quiet
+            ):
                 failed = True
 
     try:
         save_state(args.state, state)
     except OSError as error:
         print(f"Storage error: {error}", file=sys.stderr)
+        notify_check_failed(args, f"Storage error: {error}")
         return 1
+
+    if changes or errors:
+        subject, body = build_notification(changes, errors)
+        send_notification(args, subject, body)
     return int(failed)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Run the check or status output; send a failure notification if it aborts."""
+    args = parse_args(argv)
+    try:
+        return run(args)
+    except KeyboardInterrupt:
+        raise
+    except Exception as error:  # unexpected abort: notify before giving up
+        if not (args.create_profile or args.interactive):
+            notify_check_failed(args, format_failure(error))
+        print(f"Check error: {error}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

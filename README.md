@@ -64,6 +64,9 @@ python3 firmaware.py --devices /path/devices.json --state /path/state.json
 | `--state PATH` | Path to `state.json` (default: next to the script) |
 | `--profiles-dir PATH` | Directory with device profiles (default: `profiles` next to the script) |
 | `--device ID`, `-d ID` | Check or show only the entry with this ID |
+| `--notify` | Send an e-mail if new versions were found or the check failed |
+| `--notify-config PATH` | Path to the SMTP config (default: `~/.config/firmaware/notify.json`) |
+| `--quiet` | Suppress normal output (for cron logs); errors still go to stderr |
 
 `--check`, `--status`, and `--create-profile` are mutually exclusive.
 Without arguments, `devices.json`, `state.json`, and `profiles/` are looked up
@@ -209,6 +212,67 @@ copied for use with `--device`.
 If `state.json` is missing, an empty state is used. The file is written
 atomically via an adjacent `.tmp` file.
 
+## Regular checks and email notifications
+
+`--notify` sends a plain-text e-mail whenever the check finds new versions or
+cannot complete. It is meant for unattended runs (e. g. a cron job on a
+Raspberry Pi or NAS).
+
+| Situation | Mail subject |
+|---|---|
+| New versions found | `firmAware: 2 new versions found` |
+| Some entries failed, but the run finished | `firmAware: 1 warning` |
+| Check aborted (config/storage error, crash) | `firmAware: check failed` |
+
+A manual abort via `Ctrl+C` never sends a mail.
+
+### SMTP configuration
+
+Store your credentials **outside** the repository in
+`~/.config/firmaware/notify.json`:
+
+```json
+{
+  "smtp_host": "smtp.example.com",
+  "smtp_port": 587,
+  "smtp_security": "starttls",
+  "smtp_user": "you@example.com",
+  "smtp_password": "app-password",
+  "mail_from": "you@example.com",
+  "mail_to": ["you@example.com"]
+}
+```
+
+- `smtp_security` is one of `starttls` (default, port 587), `ssl` (port 465),
+  or `none`.
+- `mail_to` may be a single address string or a list of addresses.
+- `mail_from` defaults to `smtp_user`.
+- `smtp_password` is optional (some relays need no authentication).
+
+Protect the file:
+
+```bash
+mkdir -p ~/.config/firmaware && chmod 700 ~/.config/firmaware
+chmod 600 ~/.config/firmaware/notify.json
+```
+
+`notify.json` is listed in `.gitignore` so it cannot be committed by accident.
+Never put credentials in `devices.json`, `profiles/`, or any file in the
+repository.
+
+### Cron example
+
+Run the check every morning and keep a log. `--quiet` suppresses the normal
+output so the log stays small; errors still go to `stderr`:
+
+```cron
+0 8 * * * /usr/bin/python3 /home/pi/firmAware/firmaware.py --check --notify --quiet >> /home/pi/firmaware.log 2>&1
+```
+
+Use absolute paths (cron has a minimal `PATH`). The default `devices.json`,
+`state.json`, and `profiles/` live next to the script, so the working directory
+does not matter.
+
 ## Tests
 
 Automated tests without network access (sources are replaced by test doubles):
@@ -228,6 +292,7 @@ firmAware/
 ├── state.json                                # known versions and last checks
 ├── tests/
 │   └── test_firmaware.py                     # automated tests (standard library only)
+├── .gitignore                                # ignores state artifacts and notify.json
 └── requirements/
     ├── specification.md                      # project specification
     ├── firmAware-requirement-geraeteprofile.md
@@ -236,8 +301,8 @@ firmAware/
 
 ## Limitations
 
-- No automatic scheduling and no long-running background service.
-- No push, email, or MQTT notifications.
+- No automatic scheduling and no long-running background service (scheduling is left to cron or a similar tool).
+- Email notification is opt-in via `--notify` and needs an external SMTP relay; no push or MQTT notifications.
 - No semantic version comparison ("higher/lower") for upgrade decisions; the
   displayed "Last version" is the highest detected label using a best-effort
   numeric sort, not a guarantee that an update is available.

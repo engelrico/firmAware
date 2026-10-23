@@ -1053,5 +1053,398 @@ class VersionSortKeyTests(unittest.TestCase):
         )
 
 
+class NotificationTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = Path(self._tmp.name)
+        self.notify_path = self.root / "notify.json"
+        self.notify_path.write_text(
+            json.dumps(
+                {
+                    "smtp_host": "smtp.example.com",
+                    "smtp_user": "me@example.com",
+                    "smtp_password": "secret",
+                    "mail_to": ["me@example.com"],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    def _args(self, extra=None):
+        args = [
+            "--devices",
+            str(self.root / "devices.json"),
+            "--state",
+            str(self.root / "state.json"),
+            "--profiles-dir",
+            str(self.root / "profiles"),
+            "--notify-config",
+            str(self.notify_path),
+        ]
+        return args + (extra or [])
+
+    def _write_devices(self, devices):
+        (self.root / "devices.json").write_text(
+            json.dumps({"devices": devices}), encoding="utf-8"
+        )
+        (self.root / "profiles").mkdir(exist_ok=True)
+
+    def test_load_notify_config_defaults(self):
+        config = fw.load_notify_config(self.notify_path)
+        self.assertEqual(config["smtp_host"], "smtp.example.com")
+        self.assertEqual(config["smtp_security"], "starttls")
+        self.assertEqual(config["mail_from"], "me@example.com")
+        self.assertEqual(config["mail_to"], ["me@example.com"])
+
+    def test_load_notify_config_accepts_single_recipient_string(self):
+        self.notify_path.write_text(
+            json.dumps(
+                {"smtp_host": "h", "smtp_user": "u", "mail_to": "me@example.com"}
+            ),
+            encoding="utf-8",
+        )
+        self.assertEqual(fw.load_notify_config(self.notify_path)["mail_to"], ["me@example.com"])
+
+    def test_load_notify_config_missing_field(self):
+        self.notify_path.write_text(
+            json.dumps({"smtp_host": "h", "smtp_user": "u"}), encoding="utf-8"
+        )
+        with self.assertRaises(ValueError) as ctx:
+            fw.load_notify_config(self.notify_path)
+        self.assertIn("mail_to", str(ctx.exception))
+
+    def test_load_notify_config_empty_recipients(self):
+        self.notify_path.write_text(
+            json.dumps({"smtp_host": "h", "smtp_user": "u", "mail_to": []}),
+            encoding="utf-8",
+        )
+        with self.assertRaises(ValueError):
+            fw.load_notify_config(self.notify_path)
+
+    def test_load_notify_config_invalid_security(self):
+        self.notify_path.write_text(
+            json.dumps(
+                {
+                    "smtp_host": "h",
+                    "smtp_user": "u",
+                    "mail_to": ["a@example.com"],
+                    "smtp_security": "carrier-pigeon",
+                }
+            ),
+            encoding="utf-8",
+        )
+        with self.assertRaises(ValueError):
+            fw.load_notify_config(self.notify_path)
+
+    def test_load_notify_config_invalid_port(self):
+        self.notify_path.write_text(
+            json.dumps(
+                {
+                    "smtp_host": "h",
+                    "smtp_user": "u",
+                    "mail_to": ["a@example.com"],
+                    "smtp_port": "not-a-number",
+                }
+            ),
+            encoding="utf-8",
+        )
+        with self.assertRaises(ValueError):
+            fw.load_notify_config(self.notify_path)
+
+    def test_load_notify_config_must_be_object(self):
+        self.notify_path.write_text(json.dumps(["a", "b"]), encoding="utf-8")
+        with self.assertRaises(ValueError):
+            fw.load_notify_config(self.notify_path)
+
+    def test_build_notification_groups_by_category(self):
+        changes = [
+            {
+                "name": "COROS DURA",
+                "category": "firmware",
+                "versions": ["3.2008.0", "3.2007.0"],
+            }
+        ]
+        subject, body = fw.build_notification(changes, [])
+        self.assertEqual(subject, "firmAware: 2 new versions found")
+        self.assertIn("New versions", body)
+        self.assertIn("firmware", body)
+        self.assertIn("COROS DURA", body)
+        self.assertIn("new: 3.2008.0", body)
+
+    def test_build_notification_single_version(self):
+        subject, _ = fw.build_notification(
+            [{"name": "X", "category": "firmware", "versions": ["1.0"]}], []
+        )
+        self.assertEqual(subject, "firmAware: 1 new version found")
+
+    def test_build_notification_warnings_only(self):
+        subject, body = fw.build_notification(
+            [], [{"name": "COROS DURA", "error": "timeout"}]
+        )
+        self.assertEqual(subject, "firmAware: 1 warning")
+        self.assertIn("Warnings", body)
+        self.assertIn("COROS DURA: timeout", body)
+
+    def test_build_notification_changes_and_warnings(self):
+        subject, body = fw.build_notification(
+            [{"name": "X", "category": "firmware", "versions": ["1.0"]}],
+            [{"name": "Y", "error": "boom"}],
+        )
+        self.assertEqual(subject, "firmAware: 1 new version found, 1 warning")
+        self.assertIn("New versions", body)
+        self.assertIn("Warnings", body)
+
+    def test_send_email_uses_starttls_and_login(self):
+        config = fw.load_notify_config(self.notify_path)
+        smtp = mock.MagicMock()
+        smtp.__enter__ = mock.MagicMock(return_value=smtp)
+        smtp.__exit__ = mock.MagicMock(return_value=False)
+        with mock.patch.object(fw.smtplib, "SMTP", return_value=smtp) as smtp_cls:
+            fw.send_email(config, "Subject line", "Body text")
+        smtp_cls.assert_called_once_with("smtp.example.com", 587, timeout=fw.REQUEST_TIMEOUT_SECONDS)
+        smtp.starttls.assert_called_once()
+        smtp.login.assert_called_once_with("me@example.com", "secret")
+        smtp.send_message.assert_called_once()
+        message = smtp.send_message.call_args[0][0]
+        self.assertEqual(message["Subject"], "Subject line")
+        self.assertEqual(message["To"], "me@example.com")
+
+    def test_send_email_ssl_defaults_to_port_465(self):
+        self.notify_path.write_text(
+            json.dumps(
+                {
+                    "smtp_host": "smtp.example.com",
+                    "smtp_user": "me@example.com",
+                    "mail_to": ["me@example.com"],
+                    "smtp_security": "ssl",
+                }
+            ),
+            encoding="utf-8",
+        )
+        config = fw.load_notify_config(self.notify_path)
+        smtp = mock.MagicMock()
+        smtp.__enter__ = mock.MagicMock(return_value=smtp)
+        smtp.__exit__ = mock.MagicMock(return_value=False)
+        with mock.patch.object(fw.smtplib, "SMTP_SSL", return_value=smtp) as smtp_cls:
+            fw.send_email(config, "S", "B")
+        smtp_cls.assert_called_once_with("smtp.example.com", 465, timeout=fw.REQUEST_TIMEOUT_SECONDS)
+        smtp.starttls.assert_not_called()
+
+    def _fake_smtp(self):
+        smtp = mock.MagicMock()
+        smtp.__enter__ = mock.MagicMock(return_value=smtp)
+        smtp.__exit__ = mock.MagicMock(return_value=False)
+        return smtp
+
+
+class NotificationCliTests(unittest.TestCase):
+    """Check-mode wiring: changes and failures produce a mail when --notify is on."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = Path(self._tmp.name)
+        self.devices_path = self.root / "devices.json"
+        self.state_path = self.root / "state.json"
+        self.profiles_dir = self.root / "profiles"
+        self.profiles_dir.mkdir()
+        self.notify_path = self.root / "notify.json"
+        self.notify_path.write_text(
+            json.dumps(
+                {
+                    "smtp_host": "smtp.example.com",
+                    "smtp_user": "me@example.com",
+                    "smtp_password": "secret",
+                    "mail_to": ["me@example.com"],
+                }
+            ),
+            encoding="utf-8",
+        )
+        self.smtp = mock.MagicMock()
+        self.smtp.__enter__ = mock.MagicMock(return_value=self.smtp)
+        self.smtp.__exit__ = mock.MagicMock(return_value=False)
+        self.smtp_patch = mock.patch.object(
+            fw.smtplib, "SMTP", return_value=self.smtp
+        )
+        self.smtp_cls = self.smtp_patch.start()
+        self.addCleanup(self.smtp_patch.stop)
+
+    def _write_devices(self, devices):
+        self.devices_path.write_text(json.dumps({"devices": devices}), encoding="utf-8")
+
+    def _run(self, versions_by_url, extra=None):
+        def fake_fetch(device):
+            return versions_by_url[device["source_url"]]
+
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.object(fw, "fetch_source", fake_fetch):
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                code = fw.main(self._args(extra))
+        return code, out.getvalue(), err.getvalue()
+
+    def _args(self, extra=None):
+        args = [
+            "--devices",
+            str(self.devices_path),
+            "--state",
+            str(self.state_path),
+            "--profiles-dir",
+            str(self.profiles_dir),
+            "--notify-config",
+            str(self.notify_path),
+        ]
+        return args + (extra or [])
+
+    def test_notify_sends_mail_on_new_version(self):
+        self._write_devices(
+            [
+                {
+                    "id": "d1",
+                    "name": "Entry",
+                    "source_type": "text",
+                    "source_url": "https://example.com/u1",
+                    "version_pattern": r"v[0-9]+",
+                }
+            ]
+        )
+        self._run({"https://example.com/u1": "v1"})
+        code, out, _ = self._run({"https://example.com/u1": "v1 v2"}, extra=["--notify"])
+        self.assertEqual(code, 0)
+        self.smtp.send_message.assert_called_once()
+        message = self.smtp.send_message.call_args[0][0]
+        self.assertEqual(message["Subject"], "firmAware: 1 new version found")
+
+    def test_no_notify_flag_sends_nothing(self):
+        self._write_devices(
+            [
+                {
+                    "id": "d1",
+                    "name": "Entry",
+                    "source_type": "text",
+                    "source_url": "https://example.com/u1",
+                    "version_pattern": r"v[0-9]+",
+                }
+            ]
+        )
+        code, out, _ = self._run({"https://example.com/u1": "v1 v2"})
+        self.assertEqual(code, 0)
+        self.smtp.send_message.assert_not_called()
+
+    def test_no_mail_without_changes(self):
+        self._write_devices(
+            [
+                {
+                    "id": "d1",
+                    "name": "Entry",
+                    "source_type": "text",
+                    "source_url": "https://example.com/u1",
+                    "version_pattern": r"v[0-9]+",
+                }
+            ]
+        )
+        self._run({"https://example.com/u1": "v1"})
+        self.smtp.send_message.reset_mock()
+        code, _, _ = self._run({"https://example.com/u1": "v1"})
+        self.assertEqual(code, 0)
+        self.smtp.send_message.assert_not_called()
+
+    def test_check_failure_sends_warning_mail(self):
+        def failing_fetch(device):
+            raise ValueError("network down")
+
+        self._write_devices(
+            [
+                {
+                    "id": "d1",
+                    "name": "Entry",
+                    "source_type": "text",
+                    "source_url": "https://example.com/u1",
+                    "version_pattern": r"v[0-9]+",
+                }
+            ]
+        )
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.object(fw, "fetch_source", failing_fetch):
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                code = fw.main(self._args(["--notify"]))
+        self.assertEqual(code, 1)
+        self.smtp.send_message.assert_called_once()
+        message = self.smtp.send_message.call_args[0][0]
+        self.assertIn("warning", message["Subject"])
+        self.assertIn("network down", message.get_content())
+
+    def test_config_error_sends_failure_mail(self):
+        self.devices_path.write_text("not valid json", encoding="utf-8")
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            code = fw.main(self._args(["--notify"]))
+        self.assertEqual(code, 1)
+        self.smtp.send_message.assert_called_once()
+        message = self.smtp.send_message.call_args[0][0]
+        self.assertEqual(message["Subject"], "firmAware: check failed")
+        self.assertIn("Configuration error", message.get_content())
+
+    def test_keyboard_interrupt_sends_nothing(self):
+        self._write_devices(
+            [
+                {
+                    "id": "d1",
+                    "name": "Entry",
+                    "source_type": "text",
+                    "source_url": "https://example.com/u1",
+                    "version_pattern": r"v[0-9]+",
+                }
+            ]
+        )
+        with mock.patch.object(fw, "fetch_source", side_effect=KeyboardInterrupt):
+            with contextlib.redirect_stdout(io.StringIO()):
+                with contextlib.redirect_stderr(io.StringIO()):
+                    with self.assertRaises(KeyboardInterrupt):
+                        fw.main(self._args(["--notify"]))
+        self.smtp.send_message.assert_not_called()
+
+    def test_smtp_failure_does_not_crash(self):
+        self.smtp.send_message.side_effect = OSError("smtp unreachable")
+        self._write_devices(
+            [
+                {
+                    "id": "d1",
+                    "name": "Entry",
+                    "source_type": "text",
+                    "source_url": "https://example.com/u1",
+                    "version_pattern": r"v[0-9]+",
+                }
+            ]
+        )
+        self._run({"https://example.com/u1": "v1"})
+        code, _, err = self._run(
+            {"https://example.com/u1": "v1 v2"}, extra=["--notify"]
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("Notification error", err)
+
+    def test_quiet_suppresses_normal_output(self):
+        self._write_devices(
+            [
+                {
+                    "id": "d1",
+                    "name": "Entry",
+                    "source_type": "text",
+                    "source_url": "https://example.com/u1",
+                    "version_pattern": r"v[0-9]+",
+                }
+            ]
+        )
+        self._run({"https://example.com/u1": "v1"})
+        code, out, _ = self._run(
+            {"https://example.com/u1": "v1 v2"}, extra=["--quiet", "--notify"]
+        )
+        self.assertEqual(code, 0)
+        self.assertEqual(out.strip(), "")
+        # the mail was still sent
+        self.smtp.send_message.assert_called_once()
+
+
 if __name__ == "__main__":
     sys.exit(unittest.main())

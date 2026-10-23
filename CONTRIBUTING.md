@@ -143,8 +143,16 @@ The full source type reference is in [`requirements/specification.md`](requireme
 | `--devices PATH` | Path to `devices.json` |
 | `--state PATH` | Path to `state.json` |
 | `--profiles-dir PATH` | Directory with device profiles |
+| `--notify` | Send an e-mail if new versions were found or the check failed |
+| `--notify-config PATH` | Path to the SMTP config (default `~/.config/firmaware/notify.json`) |
+| `--quiet` | Suppress normal output (for cron logs); errors still go to stderr |
 
 `--device ID` also works as a positional argument: `python3 firmaware.py --check nanostation-m5-xm`.
+
+**Credentials:** SMTP credentials for `--notify` live only in `notify.json`
+outside the repository (`~/.config/firmaware/notify.json`, `chmod 600`). The
+file is git-ignored. Never store credentials in `devices.json`,
+`profiles/*.json`, or any committed file.
 
 ---
 
@@ -155,6 +163,8 @@ The full source type reference is in [`requirements/specification.md`](requireme
 - Device errors (fetch/extraction failures) do not stop other devices from being checked
 - State is written atomically via a `.tmp` file
 - No file locking — concurrent invocations with the same state file are not supported
+- A failed notification (`--notify`) prints `Notification error: ...` to `stderr` and never changes the exit code or crashes the check
+- A manual abort (`Ctrl+C`) never sends a notification
 
 ---
 

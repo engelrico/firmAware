@@ -82,8 +82,18 @@ The `version_sort_key` function compares versions **block by block as integers w
 | `--devices PATH` | Path to `devices.json` |
 | `--state PATH` | Path to `state.json` |
 | `--profiles-dir PATH` | Directory with entry profiles |
+| `--notify` | Send an e-mail if new versions were found or the check failed |
+| `--notify-config PATH` | Path to the SMTP config (default `~/.config/firmaware/notify.json`) |
+| `--quiet` | Suppress normal output (for cron logs); errors still go to stderr |
 
 `--device ID` can also be passed as a positional argument after `--check` or `--status` (e.g. `python3 firmaware.py --check nanostation-m5-xm`).
+
+### Credentials
+
+SMTP credentials for `--notify` live only in `notify.json` outside the
+repository (`~/.config/firmaware/notify.json`, `chmod 600`). The file is
+git-ignored. Never store credentials in `devices.json`, `profiles/*.json`, or
+any committed file.
 
 ---
 
