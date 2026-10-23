@@ -32,6 +32,17 @@ On the first successful fetch, all detected versions are stored as the
 
 ## Quick start
 
+Create your personal selection from the tracked template:
+
+```bash
+cp devices.template.json devices.json
+```
+
+`devices.json` is git-ignored, like `state.json`. The template ships one
+example per entry form (a profile binding and a direct `text` source with a
+placeholder URL) – replace them with your own entries, or use `--interactive`
+to build the list in the terminal.
+
 Standard run – check sources and update state:
 
 ```bash
@@ -92,7 +103,7 @@ Exit codes: `0` success, `1` configuration, check, or storage error,
 
 The configuration is split in two:
 
-- `devices.json` describes the **personal device selection**.
+- `devices.json` describes the **personal device selection** and is git-ignored.
 - `profiles/*.json` describe **reusable** fetch and version extraction.
 
 A device is configured either directly or via a profile reference; both forms
@@ -319,7 +330,8 @@ python3 -m unittest discover -s tests -t .
 ```text
 firmAware/
 ├── firmaware.py                              # fetch, extraction, comparison, profiles, CLI
-├── devices.json                              # personal device selection
+├── devices.template.json                     # starting point: one example per entry form
+├── devices.json                              # personal device selection (git-ignored)
 ├── profiles/                                 # reusable device profiles
 │   └── *.json
 ├── state.template.json                       # empty state template (reference)
@@ -330,7 +342,7 @@ firmAware/
 │   ├── cli-help.png                          # rendered --help output
 │   ├── status-table.png                      # rendered --status output
 │   └── firmAware_onepager.png                # visual one-pager (German)
-├── .gitignore                                # ignores state.json, notify.json, build artifacts
+├── .gitignore                                # ignores devices.json, state.json, notify.json, build artifacts
 └── requirements/
     ├── specification.md                      # project specification
     └── firmAware-requirement-geraeteprofile.md

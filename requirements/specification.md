@@ -28,8 +28,10 @@ This specification describes the current state of `firmaware.py`, `devices.json`
 |------|---------|
 | `firmaware.py` | Fetch, extraction, comparison, profile resolution, and storage |
 | `devices.json` | Personal entry selection (direct or via profiles) |
+| `devices.template.json` | Tracked starting point with one example per entry form |
 | `profiles/*.json` | Reusable entry profiles (fetch and version extraction) |
 | `state.json` | Known versions and last successful checks |
+| `state.template.json` | Tracked empty state structure |
 | `tests/test_firmaware.py` | Automated tests (standard library only) |
 | `specification.md` | Project specification |
 
@@ -114,6 +116,8 @@ The configuration is split into two levels:
 - `profiles/*.json` describe **reusable** fetch and version extraction for a source.
 
 An entry is configured either directly (with all technical fields in `devices.json`) or profile-based (via a profile reference). Both forms may be mixed. The root object contains a list `devices`; every local entry ID must be unique. The implementation supports the source types `text`, `json`, and `json_value`.
+
+**Local and private:** `devices.json` is per-user configuration and is git-ignored; it is never committed. The repository ships `devices.template.json` with one example per entry form: one profile-based entry and one direct `text` entry with a placeholder URL. On a missing configuration the program prints `No configuration yet: devices.json does not exist. Copy devices.template.json to devices.json and add your entries, or run --interactive to create one.` to `stderr` and exits with code `1`. The interactive mode creates the file on the first save.
 
 ### 4.1 Common Fields in devices.json
 

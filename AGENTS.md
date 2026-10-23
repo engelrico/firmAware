@@ -22,7 +22,8 @@ This document helps AI agents working on the firmAware project understand the co
 ```
 firmAware/
 ├── firmaware.py              # fetch, extraction, comparison, profiles, CLI
-├── devices.json              # personal entry selection (id + profile or direct config)
+├── devices.template.json     # starting point: one example per entry form
+├── devices.json              # personal entry selection (git-ignored)
 ├── profiles/                 # reusable entry profiles (*.json)
 │   └── *.json                # schema v2 with category field
 ├── state.template.json       # empty state template (reference)
@@ -110,6 +111,9 @@ any committed file.
 
 The agent at `.opencode/agents/profileCreator.md` guides you through URL input, version number, manufacturer/model, and writes the profile plus `devices.json` entry.
 
+`devices.json` is git-ignored. On a fresh clone it does not exist yet; copy
+`devices.template.json` to `devices.json` before adding entries.
+
 ### Check a single entry
 
 ```bash
@@ -145,7 +149,7 @@ python3 -m unittest discover -s tests -t .
 5. **Profile IDs must match `[a-z0-9][a-z0-9._-]*`.** No uppercase, no slashes, no spaces.
 6. **Tests must pass** after any change to `firmaware.py` or `tests/test_firmaware.py`.
 7. **All UI text, error messages, and documentation must be in English.**
-8. **`state.json` is local runtime state.** It is git-ignored and must never be committed; the repo ships `state.template.json` (empty `{"devices": {}}`). `devices.json` stays tracked as personal configuration.
+8. **`devices.json` and `state.json` are local files.** Both are git-ignored and must never be committed; the repo ships `devices.template.json` (one example per entry form) and `state.template.json` (empty `{"devices": {}}`).
 9. **Documentation Sync:** When changing `firmaware.py`, `profiles/*.json`, `devices.json`, `state.json`, `README.md`, or `requirements/*.md`, you must also update `requirements/specification.md`, `AGENTS.md`, and `CONTRIBUTING.md` to keep them consistent. All documentation must be in English.
 
 ---

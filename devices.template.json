@@ -1,0 +1,15 @@
+{
+  "devices": [
+    {
+      "id": "coros-dura",
+      "profile": "coros.dura"
+    },
+    {
+      "id": "my-router",
+      "name": "My Router – Firmware",
+      "source_type": "text",
+      "source_url": "https://example.com/release-notes",
+      "version_pattern": "v([0-9]+\\.[0-9]+(?:\\.[0-9]+)*)"
+    }
+  ]
+}

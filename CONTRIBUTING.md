@@ -66,6 +66,9 @@ When adding a new profile to `profiles/*.json`:
    { "id": "<local-id>", "profile": "<id>" }
    ```
 
+   `devices.json` is git-ignored. On a fresh clone it does not exist yet; copy
+   `devices.template.json` to `devices.json` first.
+
 ### 4. Test
 
 Run the full test suite:
@@ -159,6 +162,7 @@ file is git-ignored. Never store credentials in `devices.json`,
 
 - Configuration errors are detected **before** any network request
 - On configuration error: message on `stderr`, exit code `1`, no network access, no changes to `state.json`
+- A missing `devices.json` prints `No configuration yet: devices.json does not exist. Copy devices.template.json to devices.json and add your entries, or run --interactive to create one.` to `stderr` and exits with code `1`
 - Device errors (fetch/extraction failures) do not stop other devices from being checked
 - State is written atomically via a `.tmp` file
 - `state.json` is local runtime state, git-ignored, and created by the first `--check` run; the repo ships `state.template.json` (empty `{"devices": {}}`). `--status` prints `No state yet: state.json does not exist. Run --check first.` to `stderr` when the state file is missing.

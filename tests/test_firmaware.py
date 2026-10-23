@@ -210,6 +210,23 @@ class StateStorageTests(unittest.TestCase):
         self.assertTrue(template.exists(), "state.template.json must ship with the repo")
         self.assertEqual(json.loads(template.read_text(encoding="utf-8")), {"devices": {}})
 
+    def test_devices_template_is_valid(self):
+        root = Path(__file__).resolve().parents[1]
+        template = root / "devices.template.json"
+        self.assertTrue(template.exists(), "devices.template.json must ship with the repo")
+        config = json.loads(template.read_text(encoding="utf-8"))
+
+        raw = fw.validate_config(config, {"devices": {}})
+        self.assertGreaterEqual(len(raw), 1, "the template must show at least one entry")
+        resolved = fw.resolve_devices(raw, root / "profiles")
+        self.assertEqual(len(resolved), len(raw))
+        # both entry forms must be covered: a profile binding and a direct source
+        self.assertTrue(any("profile" in entry for entry in raw))
+        self.assertTrue(any("source_type" in entry for entry in raw))
+        for entry in resolved:
+            self.assertTrue(entry["id"], "every template entry needs an ID")
+            self.assertIn("source_type", entry)
+
 
 class SourceValidationTests(unittest.TestCase):
     def test_valid_text_source(self):
@@ -600,10 +617,11 @@ class CliTests(unittest.TestCase):
         self.assertIn("Configuration error:", err)
         self.assertFalse(self.state_path.exists())
 
-    def test_missing_devices_file_is_config_error(self):
+    def test_missing_devices_file_hints_at_template(self):
         code, out, err = self._run({})
         self.assertEqual(code, 1)
-        self.assertIn("Configuration error:", err)
+        self.assertIn("No configuration yet: devices.json does not exist", err)
+        self.assertIn("devices.template.json", err)
         self.assertFalse(self.state_path.exists())
 
     def test_status_shows_last_check_and_latest_version(self):

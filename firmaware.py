@@ -1403,6 +1403,18 @@ def run(args: argparse.Namespace) -> int:
     if args.interactive:
         return run_interactive(args.devices, args.profiles_dir, args.state)
 
+    if not args.devices.exists():
+        print(
+            f"No configuration yet: {args.devices.name} does not exist. "
+            f"Copy devices.template.json to {args.devices.name} and add your "
+            "entries, or run --interactive to create one.",
+            file=sys.stderr,
+        )
+        notify_check_failed(
+            args, f"Configuration error: {args.devices.name} does not exist"
+        )
+        return 1
+
     try:
         config = read_json(args.devices)
         state_existed = args.state.exists()

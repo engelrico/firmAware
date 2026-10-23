@@ -96,7 +96,9 @@ Validiere die JSON vor dem Schreiben.
 
 ### Schritt 8: In devices.json einbinden
 
-Lese `devices.json`. Prüfe, ob bereits ein Eintrag mit der gleichen `id` (lokale ID) oder mit dem gleichen `profile` existiert.
+Lese `devices.json`. Existiert die Datei noch nicht (frischer Clone), lege sie
+an, indem du `devices.template.json` kopierst, bevor du Einträge hinzufügst.
+Prüfe, ob bereits ein Eintrag mit der gleichen `id` (lokale ID) oder mit dem gleichen `profile` existiert.
 
 - Wenn die lokale ID schon existiert: Frage den Nutzer, ob er den Eintrag aktualisieren oder überspringen soll.
 - Wenn die lokale ID nicht existiert, aber das Profil bereits referenziert wird: Meldung ausgeben, dass das Profil bereits eingebunden ist.
