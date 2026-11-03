@@ -27,7 +27,7 @@ This specification describes the current state of `firmaware.py`, `firmaware_cor
 | File | Purpose |
 |------|---------|
 | `firmaware.py` | Command-line entry point; re-exports the `firmaware_core` package |
-| `firmaware_core/` | Implementation: `fetch`, `extract`, `profiles`, `state`, `checking`, `report`, `notify`, `interactive`, `cli`, plus `constants` and `errors` |
+| `firmaware_core/` | Implementation: `fetch`, `sources` (source type registry), `extract`, `profiles`, `state`, `checking`, `report`, `notify`, `interactive`, `cli`, plus `constants` and `errors` |
 | `devices.json` | Personal entry selection (direct or via profiles) |
 | `devices.template.json` | Tracked starting point with one example per entry form |
 | `profiles/*.json` | Reusable entry profiles (fetch and version extraction) |

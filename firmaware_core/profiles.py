@@ -3,23 +3,13 @@ from __future__ import annotations
 
 import codecs
 import json
-import re
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from .constants import PROFILE_CATEGORIES, PROFILE_ENTRY_FIELDS, PROFILE_ID_PATTERN, PROFILE_SCHEMA_VERSION, SOURCE_JSON, SOURCE_JSON_VALUE, SOURCE_TEXT, SUPPORTED_SOURCE_TYPES
+from .constants import PROFILE_CATEGORIES, PROFILE_ENTRY_FIELDS, PROFILE_ID_PATTERN, PROFILE_SCHEMA_VERSION
 from .fetch import validate_url_basic
-
-
-def _validate_value_path(value_path: Any, context: str) -> None:
-    """Require a non-empty list of non-empty strings."""
-    if (
-        not isinstance(value_path, list)
-        or not value_path
-        or not all(isinstance(part, str) and part.strip() for part in value_path)
-    ):
-        raise ValueError(f"{context}: Required field 'value_path' missing or invalid")
+from .sources import SOURCE_TYPES
 
 
 def validate_source_config(source: Mapping[str, Any], context: str) -> None:
@@ -29,7 +19,7 @@ def validate_source_config(source: Mapping[str, Any], context: str) -> None:
     message.
     """
     source_type = source.get("source_type")
-    if source_type not in SUPPORTED_SOURCE_TYPES:
+    if source_type not in SOURCE_TYPES:
         raise ValueError(f"{context}: Unknown source type: {source_type!r}")
 
     source_url = source.get("source_url")
@@ -49,27 +39,7 @@ def validate_source_config(source: Mapping[str, Any], context: str) -> None:
         except LookupError:
             raise ValueError(f"{context}: Unknown charset '{encoding}'") from None
 
-    if source_type == SOURCE_TEXT:
-        pattern = source.get("version_pattern")
-        if not isinstance(pattern, str) or not pattern:
-            raise ValueError(f"{context}: Required field 'version_pattern' missing")
-        try:
-            compiled = re.compile(pattern)
-        except re.error as error:
-            raise ValueError(f"{context}: Invalid regular expression: {error}") from None
-        if compiled.groups > 1:
-            raise ValueError(
-                f"{context}: 'version_pattern' may contain at most one capturing group"
-            )
-        if "value_path" in source:
-            _validate_value_path(source.get("value_path"), context)
-    elif source_type == SOURCE_JSON:
-        for key in ("items_key", "version_key"):
-            value = source.get(key)
-            if not isinstance(value, str) or not value.strip():
-                raise ValueError(f"{context}: Required field '{key}' missing or invalid")
-    elif source_type == SOURCE_JSON_VALUE:
-        _validate_value_path(source.get("value_path"), context)
+    SOURCE_TYPES[source_type].validate(source, context)
 
 
 def validate_profile(profile: Any, profile_id: str, context: str) -> None:

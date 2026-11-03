@@ -332,7 +332,8 @@ firmAware/
 ├── firmaware.py                              # command-line entry point (re-exports firmaware_core)
 ├── firmaware_core/                           # implementation package
 │   ├── constants.py, errors.py               # shared constants and exceptions
-│   ├── fetch.py, extract.py                  # HTTP fetch and version extraction per source type
+│   ├── fetch.py                              # HTTP fetch
+│   ├── sources.py, extract.py                # source type registry (validate + extract), dispatch
 │   ├── profiles.py                           # profile validation, loading, resolving
 │   ├── state.py, checking.py                 # state file, comparison, CheckResult
 │   ├── report.py, notify.py                  # terminal output, e-mail notification

@@ -18,6 +18,7 @@ from firmaware_core.constants import *  # noqa: F401,F403
 from firmaware_core.errors import *  # noqa: F401,F403
 from firmaware_core.state import *  # noqa: F401,F403
 from firmaware_core.fetch import *  # noqa: F401,F403
+from firmaware_core.sources import *  # noqa: F401,F403
 from firmaware_core.extract import *  # noqa: F401,F403
 from firmaware_core.notify import *  # noqa: F401,F403
 from firmaware_core.profiles import *  # noqa: F401,F403

@@ -17,6 +17,7 @@ from unittest import mock
 import firmaware as fw
 from firmaware_core import checking as fw_checking
 from firmaware_core import extract as fw_extract
+from firmaware_core import sources as fw_sources
 
 
 class TextExtractionTests(unittest.TestCase):
@@ -1263,6 +1264,29 @@ class NotificationCliTests(unittest.TestCase):
         self.assertEqual(out.strip(), "")
         # the mail was still sent
         self.smtp.send_message.assert_called_once()
+
+
+class SourceTypeRegistryTests(unittest.TestCase):
+    def test_registry_defines_supported_types(self):
+        self.assertEqual(fw.SUPPORTED_SOURCE_TYPES, frozenset(fw_sources.SOURCE_TYPES))
+        for name, source_type in fw_sources.SOURCE_TYPES.items():
+            self.assertEqual(source_type.name, name)
+
+    def test_registered_type_is_validated_and_extracted(self):
+        def validate(source, context):
+            if "marker" not in source:
+                raise ValueError(f"{context}: Required field 'marker' missing")
+
+        def extract(device, content):
+            return set(content.split())
+
+        custom = fw_sources.SourceType("custom", validate, extract)
+        source = {"source_type": "custom", "source_url": "https://example.com"}
+        with mock.patch.dict(fw_sources.SOURCE_TYPES, {"custom": custom}):
+            with self.assertRaisesRegex(ValueError, "marker"):
+                fw.validate_source_config(source, "Entry 'x'")
+            fw.validate_source_config({**source, "marker": 1}, "Entry 'x'")
+            self.assertEqual(fw.extract_versions("custom", "1.0 1.1", source), ["1.0", "1.1"])
 
 
 class CheckResultTests(unittest.TestCase):

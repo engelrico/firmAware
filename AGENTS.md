@@ -22,7 +22,7 @@ This document helps AI agents working on the firmAware project understand the co
 ```
 firmAware/
 ├── firmaware.py              # command-line entry point (re-exports firmaware_core)
-├── firmaware_core/           # implementation: fetch, extract, profiles, state, checking,
+├── firmaware_core/           # implementation: fetch, sources, extract, profiles, state, checking,
 │                             #   report, notify, interactive, cli (+ constants, errors)
 ├── devices.template.json     # starting point: one example per entry form
 ├── devices.json              # personal entry selection (git-ignored)
@@ -93,6 +93,10 @@ The agent at `.opencode/agents/profileCreator.md` guides you through URL input, 
 
 `devices.json` is git-ignored. On a fresh clone it does not exist yet; copy
 `devices.template.json` to `devices.json` before adding entries.
+
+### Add a source type
+
+Add the field validation and the extraction function to `firmaware_core/sources.py` and register a `SourceType` in `SOURCE_TYPES`. Nothing else in the code changes. Then document it in the specification (section 4.6) and the README; a test fails if either is missing.
 
 ### Check a single entry
 
