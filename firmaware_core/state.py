@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .checking import current_timestamp
+from .locking import file_lock
 
 
 def read_json(path: Path) -> Any:
@@ -24,6 +25,36 @@ def save_state(path: Path, state: Mapping[str, Any]) -> None:
         json.dump(state, handle, ensure_ascii=False, indent=2)
         handle.write("\n")
     os.replace(temporary, path)
+
+
+def load_devices_file(path: Path) -> dict[str, Any]:
+    """Load devices.json; a missing file is an empty configuration."""
+    if not path.exists():
+        return {"devices": []}
+    return read_json(path)
+
+
+def save_devices_file(path: Path, data: Mapping[str, Any]) -> None:
+    """Write devices.json atomically via a neighbouring ``.tmp`` file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + ".tmp")
+    with temporary.open("w", encoding="utf-8") as handle:
+        json.dump(data, handle, indent=2, ensure_ascii=False)
+        handle.write("\n")
+    os.replace(temporary, path)
+
+
+def update_state(path: Path, updates: Mapping[str, Any]) -> dict[str, Any]:
+    """Merge per-entry records into the stored state under a lock and save it.
+
+    Reads the current file again, so records of other entries written by another
+    process in the meantime are kept. Returns the saved state.
+    """
+    with file_lock(path):
+        state = load_state(path)
+        state.setdefault("devices", {}).update(updates)
+        save_state(path, state)
+    return state
 
 
 def load_state(path: Path) -> dict[str, Any]:

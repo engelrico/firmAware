@@ -23,7 +23,7 @@ This document helps AI agents working on the firmAware project understand the co
 firmAware/
 ├── firmaware.py              # command-line entry point (re-exports firmaware_core)
 ├── firmaware_core/           # implementation: fetch, sources, extract, profiles, state, checking,
-│                             #   report, notify, interactive, cli (+ constants, errors)
+│                             #   report, notify, service, locking, interactive, cli (+ constants, errors)
 ├── devices.template.json     # starting point: one example per entry form
 ├── devices.json              # personal entry selection (git-ignored)
 ├── profiles/                 # reusable device profiles (*.json)

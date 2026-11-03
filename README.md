@@ -362,7 +362,8 @@ firmAware/
 │   ├── fetch.py                              # HTTP fetch
 │   ├── sources.py, extract.py                # source type registry (validate + extract), dispatch
 │   ├── profiles.py                           # profile validation, loading, resolving
-│   ├── state.py, checking.py                 # state file, comparison, CheckResult
+│   ├── state.py, locking.py                  # state/devices files, merge-on-write, file lock
+│   ├── checking.py, service.py               # comparison, CheckResult; entry management and checks
 │   ├── report.py, notify.py                  # terminal output, e-mail notification
 │   └── interactive.py, cli.py                # interactive manager, argument parsing and run
 ├── devices.template.json                     # starting point: one example per entry form
@@ -396,7 +397,9 @@ firmAware/
 - No guaranteed long-term stability of manufacturer endpoints.
 - URLs and search patterns are considered trusted local configuration and are
   not intended for unverified public input.
-- No file locking; concurrent invocations using the same state file are not
-  supported.
+- Concurrent invocations are safe for different entries: the state is saved under an
+  advisory lock (`state.json.lock`, git-ignored) and merged per entry, so a run never
+  overwrites records another process wrote meanwhile. Two runs checking the same entry
+  at the same time are not coordinated (the last write wins).
 
 Further details are available in [`requirements/specification.md`](requirements/specification.md).

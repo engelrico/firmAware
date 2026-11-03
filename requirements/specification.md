@@ -27,7 +27,7 @@ This specification describes the current state of `firmaware.py`, `firmaware_cor
 | File | Purpose |
 |------|---------|
 | `firmaware.py` | Command-line entry point; re-exports the `firmaware_core` package |
-| `firmaware_core/` | Implementation: `fetch`, `sources` (source type registry), `extract`, `profiles`, `state`, `checking`, `report`, `notify`, `interactive`, `cli`, plus `constants` and `errors` |
+| `firmaware_core/` | Implementation: `fetch`, `sources` (source type registry), `extract`, `profiles`, `state`, `checking`, `report`, `notify`, `service` (entry management and checks without output), `locking`, `interactive`, `cli`, plus `constants` and `errors` |
 | `devices.json` | Personal entry selection (direct or via profiles) |
 | `devices.template.json` | Tracked starting point with one example per entry form |
 | `profiles/*.json` | Reusable entry profiles (fetch and version extraction) |
@@ -520,7 +520,7 @@ There is no separate exit code for found updates and no structured JSON output.
 - Successfully checked entries are stored even if other entries fail.
 - Writing first goes to a neighboring `.tmp` file; then the target file is replaced with `os.replace`.
 - The parent directory of the state file is created if needed.
-- No file lock. Concurrent invocations using the same state file are not supported.
+- The state is saved under an advisory file lock (`<state file>.lock`, via `fcntl.flock`, skipped where `fcntl` is unavailable) and merged per entry: the file is read again, only the entry records changed by this run are replaced, then it is written atomically. A concurrent process (for example another `--check` or the web interface) therefore does not lose its records. Two processes checking the same entry at the same time are not coordinated; the last write wins. `devices.json` is also written atomically (`.tmp` and `os.replace`). A lock that cannot be acquired within 30 seconds is a storage error.
 - Terminal message and storage do not form a transaction. After a storage error, the message may appear again on the next run.
 - On a configuration error, an understandable message on `stderr`, exit code `1`, no network request, no change of `state.json`, and no uncontrolled traceback.
 

@@ -1,7 +1,6 @@
 """Interactive entry manager (--interactive)."""
 from __future__ import annotations
 
-import json
 import os
 import sys
 from collections.abc import Mapping, Sequence
@@ -19,21 +18,8 @@ from .checking import (
 from .constants import CATEGORY_DISPLAY_NAMES, PROFILE_ID_PATTERN
 from .profiles import resolve_device, resolve_devices
 from .report import format_timestamp
-from .state import load_state, read_json, save_state
-
-
-def load_devices_file(path: Path) -> dict[str, Any]:
-    """Load devices.json from disk."""
-    if not path.exists():
-        return {"devices": []}
-    return read_json(path)
-
-
-def save_devices_file(path: Path, data: dict[str, Any]) -> None:
-    """Write devices.json to disk with consistent formatting."""
-    with path.open("w", encoding="utf-8") as handle:
-        json.dump(data, handle, indent=2, ensure_ascii=False)
-        handle.write("\n")
+from .service import mark_installed_latest, set_installed_version
+from .state import load_devices_file, load_state, save_devices_file, update_state
 
 
 def interactive_category_label(device: Mapping[str, Any]) -> str:
@@ -181,24 +167,6 @@ def edit_entry_name(raw: list[Any], index: int, resolved_name: str = "") -> None
         del entry["name"]
 
 
-def set_installed_version(entry: dict[str, Any], value: str) -> None:
-    """Set the installed version of an entry; an empty value clears it."""
-    value = value.strip()
-    if value:
-        entry["installed_version"] = value
-    else:
-        entry.pop("installed_version", None)
-
-
-def mark_installed_latest(entry: dict[str, Any], discovered: Mapping[str, Any] | None) -> str | None:
-    """Set the installed version to the highest known version; return it, or None."""
-    if not discovered:
-        return None
-    latest = max(discovered, key=version_sort_key)
-    entry["installed_version"] = latest
-    return latest
-
-
 def prompt_installed_version(entry: dict[str, Any]) -> None:
     """Prompt for the installed version; the current value is pre-filled for editing."""
     import readline
@@ -274,7 +242,7 @@ def check_entry_now(
         print(f"  Result: {result.summary}")
         record_check(state, device["id"], result)
         try:
-            save_state(state_path, state)
+            update_state(state_path, {device["id"]: state["devices"][device["id"]]})
             print("  State saved.")
         except OSError as save_error:
             print(f"  Storage error: {save_error}")

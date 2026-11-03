@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -13,7 +14,7 @@ from .interactive import run_interactive
 from .notify import build_notification, format_failure, notify_check_failed, send_notification
 from .profiles import resolve_devices
 from .report import print_status, process_device
-from .state import load_state, read_json, save_state, validate_config
+from .state import load_state, read_json, update_state, validate_config
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -128,6 +129,7 @@ def run(args: argparse.Namespace) -> int:
             )
         return 0
 
+    stored_before = copy.deepcopy(state["devices"])
     failed = False
     width = name_column_width(devices)
     changes: list[Mapping[str, Any]] = []
@@ -183,9 +185,14 @@ def run(args: argparse.Namespace) -> int:
             ):
                 failed = True
 
+    changed = {
+        entry_id: record
+        for entry_id, record in state["devices"].items()
+        if record != stored_before.get(entry_id)
+    }
     try:
-        save_state(args.state, state)
-    except OSError as error:
+        update_state(args.state, changed)
+    except (OSError, ValueError) as error:
         print(f"Storage error: {error}", file=sys.stderr)
         notify_check_failed(args, f"Storage error: {error}")
         return 1

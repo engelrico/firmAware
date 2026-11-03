@@ -10,6 +10,7 @@ import shutil
 import smtplib
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -18,6 +19,8 @@ import firmaware as fw
 from firmaware_core import checking as fw_checking
 from firmaware_core import extract as fw_extract
 from firmaware_core import interactive as fw_interactive
+from firmaware_core import locking as fw_locking
+from firmaware_core import service as fw_service
 from firmaware_core import sources as fw_sources
 
 
@@ -1265,6 +1268,262 @@ class NotificationCliTests(unittest.TestCase):
         self.assertEqual(out.strip(), "")
         # the mail was still sent
         self.smtp.send_message.assert_called_once()
+
+
+class SharedStorageTests(unittest.TestCase):
+    """Locking and merge-on-write so cron and other processes do not clobber each other."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = Path(self._tmp.name)
+
+    def test_lock_excludes_other_holders(self):
+        path = self.root / "state.json"
+        with fw_locking.file_lock(path):
+            with self.assertRaises(TimeoutError):
+                with fw_locking.file_lock(path, timeout=0.2):
+                    pass
+        with fw_locking.file_lock(path, timeout=0.2):
+            pass  # released again
+
+    def test_lock_waits_for_a_short_holder(self):
+        path = self.root / "state.json"
+        order = []
+
+        def holder():
+            with fw_locking.file_lock(path):
+                order.append("first")
+                threading.Event().wait(0.2)
+
+        thread = threading.Thread(target=holder)
+        thread.start()
+        threading.Event().wait(0.05)
+        with fw_locking.file_lock(path, timeout=5):
+            order.append("second")
+        thread.join()
+        self.assertEqual(order, ["first", "second"])
+
+    def test_update_state_keeps_records_written_in_between(self):
+        path = self.root / "state.json"
+        fw.update_state(path, {"a": {"last_checked": "t", "discovered_at": {"1": "t"}}})
+        fw.update_state(path, {"b": {"last_checked": "t", "discovered_at": {"2": "t"}}})
+        self.assertEqual(sorted(fw.load_state(path)["devices"]), ["a", "b"])
+
+    def test_check_run_does_not_overwrite_concurrent_state_changes(self):
+        devices = self.root / "devices.json"
+        state = self.root / "state.json"
+        devices.write_text(
+            json.dumps(
+                {
+                    "devices": [
+                        {
+                            "id": "d1",
+                            "source_type": "text",
+                            "source_url": "https://example.com/u1",
+                            "version_pattern": r"v[0-9]+",
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        def fake_fetch(device):
+            # Another process (for example the web interface) saves a record meanwhile.
+            fw.update_state(state, {"other": {"last_checked": "t", "discovered_at": {"9": "t"}}})
+            return "v1"
+
+        with mock.patch.object(fw_extract, "fetch_source", fake_fetch):
+            with contextlib.redirect_stdout(io.StringIO()):
+                code = fw.main(
+                    ["--devices", str(devices), "--state", str(state), "--profiles-dir", str(self.root)]
+                )
+        self.assertEqual(code, 0)
+        self.assertEqual(sorted(fw.load_state(state)["devices"]), ["d1", "other"])
+
+    def test_devices_file_is_written_atomically(self):
+        path = self.root / "devices.json"
+        fw.save_devices_file(path, {"devices": [{"id": "x"}]})
+        self.assertEqual(fw.load_devices_file(path), {"devices": [{"id": "x"}]})
+        self.assertFalse(path.with_name("devices.json.tmp").exists())
+
+    def test_missing_devices_file_is_empty_configuration(self):
+        self.assertEqual(fw.load_devices_file(self.root / "none.json"), {"devices": []})
+
+
+class ServiceTests(unittest.TestCase):
+    """Entry management and checks as the web interface uses them."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        root = Path(self._tmp.name)
+        self.profiles_dir = root / "profiles"
+        self.profiles_dir.mkdir()
+        for profile_id, category in (("t.one", "firmware"), ("t.two", "software")):
+            (self.profiles_dir / f"{profile_id}.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 2,
+                        "id": profile_id,
+                        "name": f"Profile {profile_id}",
+                        "category": category,
+                        "source_type": "text",
+                        "source_url": f"https://example.com/{profile_id}",
+                        "version_pattern": r"v[0-9]+(?:\.[0-9]+)*",
+                    }
+                ),
+                encoding="utf-8",
+            )
+        (self.profiles_dir / "broken.json").write_text("{", encoding="utf-8")
+        self.ws = fw_service.Workspace(root / "devices.json", root / "state.json", self.profiles_dir)
+        fw.save_devices_file(
+            self.ws.devices_path,
+            {
+                "devices": [
+                    {"id": "a", "profile": "t.one", "name": "Alpha", "installed_version": "v1"},
+                    {"id": "b", "profile": "t.one"},
+                    {"id": "c", "profile": "t.two", "enabled": False},
+                ]
+            },
+        )
+
+    def ids(self):
+        return [entry["id"] for entry in self.ws.entries()]
+
+    def check(self, content, ids=None):
+        with mock.patch.object(fw_extract, "fetch_source", return_value=content):
+            return self.ws.check(ids)
+
+    def test_entries_without_state_and_missing_file(self):
+        views = {view["id"]: view for view in self.ws.entries()}
+        self.assertEqual(views["a"]["name"], "Alpha")
+        self.assertEqual(views["a"]["custom_name"], "Alpha")
+        self.assertEqual(views["b"]["name"], "Profile t.one")
+        self.assertIsNone(views["b"]["last_checked"])
+        self.assertEqual(views["a"]["installed_state"], "unknown")
+        self.assertIsNone(views["b"]["installed_state"])
+        self.assertFalse(views["c"]["enabled"])
+        empty = fw_service.Workspace(
+            self.ws.devices_path.with_name("none.json"), self.ws.state_path, self.profiles_dir
+        )
+        self.assertEqual(empty.entries(), [])
+
+    def test_invalid_entry_is_listed_with_error(self):
+        fw.save_devices_file(self.ws.devices_path, {"devices": [{"id": "x", "profile": "missing"}]})
+        view = self.ws.entries()[0]
+        self.assertEqual(view["id"], "x")
+        self.assertIn("Profile file not readable", view["error"])
+
+    def test_check_records_state_and_reports_outdated(self):
+        results = {r["id"]: r for r in self.check("v1 v2")}
+        self.assertEqual(results["a"]["status"], "ok")
+        self.assertTrue(results["a"]["summary"].startswith("Baseline (2): v1, v2"))
+        self.assertIn("outdated: installed v1, latest v2", results["a"]["summary"])
+        self.assertEqual(results["c"]["status"], "disabled")
+        views = {view["id"]: view for view in self.ws.entries()}
+        self.assertEqual(views["a"]["latest_version"], "v2")
+        self.assertEqual(views["a"]["installed_state"], "outdated")
+        self.assertIsNotNone(views["b"]["last_checked"])
+        self.assertIsNone(views["c"]["last_checked"])
+        again = {r["id"]: r for r in self.check("v1 v2 v3")}
+        self.assertEqual(again["b"]["new_versions"], ["v3"])
+
+    def test_check_selected_ids_and_progress(self):
+        seen = []
+        with mock.patch.object(fw_extract, "fetch_source", return_value="v1"):
+            self.ws.check(["b"], progress=lambda done, total, result: seen.append((done, total, result["id"])))
+        self.assertEqual(seen, [(1, 1, "b")])
+        with self.assertRaises(fw_service.NotFoundError):
+            self.ws.check(["nope"])
+
+    def test_check_error_does_not_stop_others(self):
+        def fake(device):
+            if device["source_url"].endswith("t.two"):
+                raise ValueError("boom")
+            return "v1"
+
+        fw.save_devices_file(
+            self.ws.devices_path,
+            {"devices": [{"id": "a", "profile": "t.two"}, {"id": "b", "profile": "t.one"}]},
+        )
+        with mock.patch.object(fw_extract, "fetch_source", fake):
+            results = {r["id"]: r for r in self.ws.check()}
+        self.assertEqual(results["a"]["status"], "error")
+        self.assertEqual(results["a"]["summary"], "Check error: boom")
+        self.assertEqual(results["b"]["status"], "ok")
+
+    def test_entry_detail_has_history_newest_first(self):
+        self.check("v1 v2 v10")
+        detail = self.ws.entry("b")
+        self.assertEqual([h["version"] for h in detail["history"]], ["v10", "v2", "v1"])
+        with self.assertRaises(fw_service.NotFoundError):
+            self.ws.entry("nope")
+
+    def test_update_entry(self):
+        self.ws.update_entry("b", {"name": " Beta ", "installed_version": "v5", "enabled": False})
+        view = next(v for v in self.ws.entries() if v["id"] == "b")
+        self.assertEqual((view["name"], view["installed_version"], view["enabled"]), ("Beta", "v5", False))
+        self.ws.update_entry("b", {"name": "", "installed_version": ""})
+        view = next(v for v in self.ws.entries() if v["id"] == "b")
+        self.assertEqual(view["name"], "Profile t.one")
+        self.assertIsNone(view["installed_version"])
+
+    def test_update_entry_rejects_bad_input(self):
+        for changes in ({"id": "z"}, {"enabled": "yes"}, {"installed_version": 5}, {"source_url": "x"}):
+            with self.subTest(changes=changes):
+                with self.assertRaises(fw_service.ServiceError):
+                    self.ws.update_entry("b", changes)
+        with self.assertRaises(fw_service.NotFoundError):
+            self.ws.update_entry("nope", {"name": "x"})
+        self.assertEqual(next(v for v in self.ws.entries() if v["id"] == "b")["enabled"], True)
+
+    def test_mark_installed_latest(self):
+        with self.assertRaises(fw_service.ConflictError):
+            self.ws.mark_installed_latest("b")
+        self.check("v1 v2 v10")
+        self.assertEqual(self.ws.mark_installed_latest("b"), "v10")
+        view = next(v for v in self.ws.entries() if v["id"] == "b")
+        self.assertEqual((view["installed_version"], view["installed_state"]), ("v10", "current"))
+
+    def test_add_duplicate_delete_reorder(self):
+        self.ws.add_entry("t.two", "d", "Delta")
+        self.assertEqual(self.ids(), ["a", "b", "c", "d"])
+        for bad in ("D", "", "a b"):
+            with self.assertRaises(fw_service.ServiceError):
+                self.ws.add_entry("t.two", bad)
+        with self.assertRaises(fw_service.ConflictError):
+            self.ws.add_entry("t.two", "d")
+        with self.assertRaises(fw_service.ServiceError):
+            self.ws.add_entry("missing", "e")
+        self.ws.duplicate_entry("a", "a2")
+        self.assertEqual(self.ids(), ["a", "a2", "b", "c", "d"])
+        clone = next(v for v in self.ws.entries() if v["id"] == "a2")
+        self.assertIsNone(clone["installed_version"])
+        self.assertEqual(clone["custom_name"], "Alpha")
+        with self.assertRaises(fw_service.ConflictError):
+            self.ws.duplicate_entry("a", "b")
+        self.ws.reorder(["d", "c", "b", "a2", "a"])
+        self.assertEqual(self.ids(), ["d", "c", "b", "a2", "a"])
+        for bad in (["a"], ["a", "a", "b", "c", "d"], ["a", "b", "c", "d", "zzz"]):
+            with self.assertRaises(fw_service.ServiceError):
+                self.ws.reorder(bad)
+        self.ws.delete_entry("c")
+        self.assertEqual(self.ids(), ["d", "b", "a2", "a"])
+        with self.assertRaises(fw_service.NotFoundError):
+            self.ws.delete_entry("c")
+
+    def test_profiles_list_skips_invalid_files(self):
+        self.assertEqual([p["id"] for p in self.ws.profiles()], ["t.one", "t.two"])
+        self.assertEqual(self.ws.profiles()[1]["category"], "software")
+
+    def test_first_edit_creates_devices_file(self):
+        ws = fw_service.Workspace(
+            self.ws.devices_path.with_name("fresh.json"), self.ws.state_path, self.profiles_dir
+        )
+        ws.add_entry("t.one", "first")
+        self.assertEqual([v["id"] for v in ws.entries()], ["first"])
 
 
 class SourceTypeRegistryTests(unittest.TestCase):
