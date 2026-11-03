@@ -328,7 +328,7 @@ Example of resolved configuration:
 }
 ```
 
-The result is usable with `fetch_source()`, `extract_versions()`, `process_device()`, and `print_status()`. Read entry and profile objects are not modified during merging.
+The result is usable with `fetch_source()`, `extract_versions()`, `check_device()` (returns a `CheckResult` without output or state changes), `record_check()`, `process_device()`, and `print_status()`. Read entry and profile objects are not modified during merging.
 
 ### 4.9 Direct Configuration (Backwards Compatibility)
 

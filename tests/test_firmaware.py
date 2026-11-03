@@ -1262,6 +1262,52 @@ class NotificationCliTests(unittest.TestCase):
         self.smtp.send_message.assert_called_once()
 
 
+class CheckResultTests(unittest.TestCase):
+    DEVICE = {"id": "x", "name": "X", "category": "firmware"}
+
+    def check(self, versions, state):
+        with mock.patch.object(fw, "fetch_versions", return_value=versions):
+            return fw.check_device(self.DEVICE, state)
+
+    def test_baseline_has_no_new_versions(self):
+        result = self.check(["1.0"], {"devices": {}})
+        self.assertTrue(result.ok)
+        self.assertIsNone(result.previous)
+        self.assertEqual(result.new_versions, [])
+        self.assertEqual(result.summary, "Baseline (1): 1.0")
+
+    def test_new_version_is_reported_without_touching_state(self):
+        state = {"devices": {"x": {"last_checked": "t", "discovered_at": {"1.0": "t"}}}}
+        result = self.check(["1.0", "1.1"], state)
+        self.assertEqual(result.new_versions, ["1.1"])
+        self.assertEqual(result.summary, "new: 1.1")
+        self.assertEqual(list(state["devices"]["x"]["discovered_at"]), ["1.0"])
+
+    def test_fetch_error_is_captured(self):
+        with mock.patch.object(fw, "fetch_versions", side_effect=ValueError("boom")):
+            result = fw.check_device(self.DEVICE, {"devices": {}})
+        self.assertFalse(result.ok)
+        self.assertEqual(result.error, "boom")
+
+    def test_record_check_keeps_known_timestamps(self):
+        state = {"devices": {"x": {"last_checked": "t", "discovered_at": {"1.0": "old"}}}}
+        result = self.check(["1.0", "1.1"], state)
+        fw.record_check(state, "x", result)
+        discovered = state["devices"]["x"]["discovered_at"]
+        self.assertEqual(discovered["1.0"], "old")
+        self.assertIn("1.1", discovered)
+
+    def test_process_device_leaves_state_unchanged_on_error(self):
+        state = {"devices": {}}
+        errors = []
+        with mock.patch.object(fw, "fetch_versions", side_effect=ValueError("boom")):
+            with contextlib.redirect_stderr(io.StringIO()):
+                ok = fw.process_device(self.DEVICE, state, 1, errors=errors, quiet=True)
+        self.assertFalse(ok)
+        self.assertEqual(state, {"devices": {}})
+        self.assertEqual(errors, [{"name": "X", "error": "boom"}])
+
+
 class DocumentationConsistencyTests(unittest.TestCase):
     """Guard against drift between code and the single documentation sources."""
 

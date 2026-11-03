@@ -701,6 +701,46 @@ def current_timestamp() -> str:
     return datetime.now().astimezone().isoformat(timespec="seconds")
 
 
+@dataclass(frozen=True)
+class CheckResult:
+    """Outcome of checking one entry; carries no output and changes no state."""
+
+    versions: list[str] = field(default_factory=list)
+    new_versions: list[str] = field(default_factory=list)
+    previous: Mapping[str, Any] | None = None
+    error: str | None = None
+
+    @property
+    def ok(self) -> bool:
+        return self.error is None
+
+    @property
+    def summary(self) -> str:
+        return check_summary(self.previous, self.versions, self.new_versions)
+
+
+def check_device(device: Mapping[str, Any], state: Mapping[str, Any]) -> CheckResult:
+    """Fetch an entry's source and compare it with the stored state."""
+    previous = state.get("devices", {}).get(device["id"])
+    try:
+        versions = fetch_versions(device)
+        _, new_versions = compare_versions(versions, previous)
+    except Exception as error:  # a device error does not stop the remaining devices
+        return CheckResult(previous=previous, error=str(error))
+    return CheckResult(versions=versions, new_versions=new_versions, previous=previous)
+
+
+def record_check(state: dict[str, Any], device_id: str, result: CheckResult) -> None:
+    """Store the versions of a successful check in the state."""
+    previous = result.previous
+    discovered = dict(previous.get("discovered_at") or {}) if previous else {}
+    now = current_timestamp()
+    for version in result.versions:
+        if version not in discovered:
+            discovered[version] = now
+    state["devices"][device_id] = {"last_checked": now, "discovered_at": discovered}
+
+
 def process_device(
     device: Mapping[str, Any],
     state: dict[str, Any],
@@ -710,42 +750,31 @@ def process_device(
     errors: list[Mapping[str, Any]] | None = None,
     quiet: bool = False,
 ) -> bool:
-    """Check a single device and update the state on success."""
+    """Check a single device, print the result, and update the state on success."""
     name = display_name(device)
     if device.get("enabled") is False:
         if not quiet:
             print(f"{name:<{width}}  [disabled]")
         return True
-    try:
-        versions = fetch_versions(device)
-        previous = state["devices"].get(device["id"])
-        known, new_versions = compare_versions(versions, previous)
-        if not quiet:
-            print(f"{name:<{width}}  {check_summary(previous, versions, new_versions)}")
-        if new_versions and changes is not None:
-            changes.append(
-                {
-                    "id": device["id"],
-                    "name": name,
-                    "category": device.get("category", ""),
-                    "versions": list(new_versions),
-                }
-            )
-        discovered = dict(previous.get("discovered_at") or {}) if previous else {}
-        now = current_timestamp()
-        for version in versions:
-            if version not in discovered:
-                discovered[version] = now
-        state["devices"][device["id"]] = {
-            "last_checked": now,
-            "discovered_at": discovered,
-        }
-        return True
-    except Exception as error:  # a device error does not stop the remaining devices
-        print(f"{name:<{width}}  Check error: {error}", file=sys.stderr)
+    result = check_device(device, state)
+    if not result.ok:
+        print(f"{name:<{width}}  Check error: {result.error}", file=sys.stderr)
         if errors is not None:
-            errors.append({"name": name, "error": str(error)})
+            errors.append({"name": name, "error": result.error})
         return False
+    if not quiet:
+        print(f"{name:<{width}}  {result.summary}")
+    if result.new_versions and changes is not None:
+        changes.append(
+            {
+                "id": device["id"],
+                "name": name,
+                "category": device.get("category", ""),
+                "versions": list(result.new_versions),
+            }
+        )
+    record_check(state, device["id"], result)
+    return True
 
 
 def format_timestamp(value: Any) -> str:
@@ -1058,28 +1087,17 @@ def check_entry_now(
     name = display_name(device)
     print()
     print(f"  Checking {name} …")
-    try:
-        versions = fetch_versions(device)
-        previous = state.get("devices", {}).get(device["id"])
-        known, new_versions = compare_versions(versions, previous)
-        summary = check_summary(previous, versions, new_versions)
-        print(f"  Result: {summary}")
-        discovered = dict(previous.get("discovered_at") or {}) if previous else {}
-        now = current_timestamp()
-        for version in versions:
-            if version not in discovered:
-                discovered[version] = now
-        state["devices"][device["id"]] = {
-            "last_checked": now,
-            "discovered_at": discovered,
-        }
+    result = check_device(device, state)
+    if not result.ok:
+        print(f"  Check error: {result.error}")
+    else:
+        print(f"  Result: {result.summary}")
+        record_check(state, device["id"], result)
         try:
             save_state(state_path, state)
             print("  State saved.")
         except OSError as save_error:
             print(f"  Storage error: {save_error}")
-    except Exception as error:
-        print(f"  Check error: {error}")
     print()
     input("  Press Enter to continue …")
 
