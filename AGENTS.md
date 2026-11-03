@@ -24,7 +24,7 @@ firmAware/
 ├── firmaware.py              # fetch, extraction, comparison, profiles, CLI
 ├── devices.template.json     # starting point: one example per entry form
 ├── devices.json              # personal entry selection (git-ignored)
-├── profiles/                 # reusable entry profiles (*.json)
+├── profiles/                 # reusable device profiles (*.json)
 │   └── *.json                # schema v2 with category field
 ├── state.template.json       # empty state template (reference)
 ├── state.json                # local runtime state (git-ignored, created on first --check)
@@ -56,7 +56,7 @@ Every profile in `profiles/*.json` must conform to schema v2 as defined in [`req
 | `id` | Yes | Must match `[a-z0-9][a-z0-9._-]*`, must match filename without `.json` |
 | `name` | Yes | Non-empty string |
 | `category` | Yes | One of: `firmware`, `software`, `operating_system` |
-| `source_type` | Yes | `text`, `json`, or `json_value` |
+| `source_type` | Yes | `text`, `json`, `json_value`, or `json_text` |
 | `source_url` | Yes | Valid HTTP/HTTPS URL without credentials |
 
 Profile-based entries in `devices.json` may contain **only** `id`, `profile`, `name`, and `enabled`. Technical fields are a configuration error in profile-based entries.
@@ -81,7 +81,7 @@ The `version_sort_key` function compares versions **block by block as integers w
 | `--device ID`, `-d ID` | Check or show only the entry with this ID |
 | `--devices PATH` | Path to `devices.json` |
 | `--state PATH` | Path to `state.json` |
-| `--profiles-dir PATH` | Directory with entry profiles |
+| `--profiles-dir PATH` | Directory with device profiles |
 | `--notify` | Send an e-mail if new versions were found or the check failed |
 | `--notify-config PATH` | Path to the SMTP config (default `~/.config/firmaware/notify.json`) |
 | `--quiet` | Suppress normal output (for cron logs); errors still go to stderr |

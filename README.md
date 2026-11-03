@@ -166,6 +166,7 @@ Supported source types:
 | `text` | Regex on HTML/text (after `html.unescape`) | `version_pattern` |
 | `json` | Versions from a JSON list | `items_key`, `version_key` |
 | `json_value` | Single value via a nested path | `value_path` |
+| `json_text` | Regex on a text value at a nested path (e. g. an HTML article body in a JSON API) | `value_path`, `version_pattern` |
 
 For `version_pattern`, the following applies: without a capture group, the full
 match is the version; with exactly one capture group, its content is; more than

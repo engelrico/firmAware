@@ -42,8 +42,9 @@ MAX_EXAMPLE_LENGTH = 100
 SOURCE_TEXT = "text"
 SOURCE_JSON = "json"
 SOURCE_JSON_VALUE = "json_value"
+SOURCE_JSON_TEXT = "json_text"
 
-SUPPORTED_SOURCE_TYPES = frozenset({SOURCE_TEXT, SOURCE_JSON, SOURCE_JSON_VALUE})
+SUPPORTED_SOURCE_TYPES = frozenset({SOURCE_TEXT, SOURCE_JSON, SOURCE_JSON_VALUE, SOURCE_JSON_TEXT})
 
 PROFILE_SCHEMA_VERSION = 2
 PROFILE_ID_PATTERN = re.compile(r"[a-z0-9][a-z0-9._-]*")
@@ -173,13 +174,18 @@ def fetch_source(device: Mapping[str, Any]) -> str:
 # --- Extraction per source type --------------------------------------------
 
 
-def versions_from_text(device: Mapping[str, Any], content: str) -> set[str]:
-    """Extract versions from a text/HTML source via a search pattern."""
+def _extract_versions_from_text(device: Mapping[str, Any], content: str) -> set[str]:
+    """Extract versions from text via a search pattern."""
     pattern = re.compile(device["version_pattern"])
     if pattern.groups > 1:
         raise FirmwareSourceError("Search pattern may contain at most one capturing group")
     group = 1 if pattern.groups else 0
     return {match.group(group) for match in pattern.finditer(html.unescape(content))}
+
+
+def versions_from_text(device: Mapping[str, Any], content: str) -> set[str]:
+    """Extract versions from a text/HTML source via a search pattern."""
+    return _extract_versions_from_text(device, content)
 
 
 def versions_from_json(device: Mapping[str, Any], content: str) -> set[str]:
@@ -210,10 +216,29 @@ def versions_from_json_value(device: Mapping[str, Any], content: str) -> set[str
     return {value.strip()}
 
 
+def versions_from_json_text(device: Mapping[str, Any], content: str) -> set[str]:
+    """Extract versions from text located at a nested JSON path via a pattern.
+
+    Fetches the JSON document, follows ``value_path`` to a nested string, and
+    applies the same ``version_pattern`` search as :func:`versions_from_text`
+    to that string. Useful for JSON APIs whose payload embeds HTML or plain
+    text with version labels (e. g. Zendesk ``article.body``).
+    """
+    value: Any = json.loads(content)
+    for key in device["value_path"]:
+        if not isinstance(value, dict) or key not in value:
+            raise FirmwareSourceError("Value at json path is missing or invalid")
+        value = value[key]
+    if not isinstance(value, str) or not value.strip():
+        raise FirmwareSourceError("Value at json path is missing or invalid")
+    return _extract_versions_from_text(device, value)
+
+
 EXTRACTORS: dict[str, Callable[[Mapping[str, Any], str], set[str]]] = {
     SOURCE_TEXT: versions_from_text,
     SOURCE_JSON: versions_from_json,
     SOURCE_JSON_VALUE: versions_from_json_value,
+    SOURCE_JSON_TEXT: versions_from_json_text,
 }
 
 
@@ -490,6 +515,25 @@ def validate_source_config(source: Mapping[str, Any], context: str) -> None:
             or not all(isinstance(part, str) and part.strip() for part in value_path)
         ):
             raise ValueError(f"{context}: Required field 'value_path' missing or invalid")
+    elif source_type == SOURCE_JSON_TEXT:
+        value_path = source.get("value_path")
+        if (
+            not isinstance(value_path, list)
+            or not value_path
+            or not all(isinstance(part, str) and part.strip() for part in value_path)
+        ):
+            raise ValueError(f"{context}: Required field 'value_path' missing or invalid")
+        pattern = source.get("version_pattern")
+        if not isinstance(pattern, str) or not pattern:
+            raise ValueError(f"{context}: Required field 'version_pattern' missing")
+        try:
+            compiled = re.compile(pattern)
+        except re.error as error:
+            raise ValueError(f"{context}: Invalid regular expression: {error}") from None
+        if compiled.groups > 1:
+            raise ValueError(
+                f"{context}: 'version_pattern' may contain at most one capturing group"
+            )
 
 
 def validate_profile(profile: Any, profile_id: str, context: str) -> None:

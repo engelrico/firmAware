@@ -104,7 +104,7 @@ The full field reference is in [`requirements/specification.md#46-entry-profiles
 | `id` | Yes | Profile ID, matches filename without `.json`, pattern `[a-z0-9][a-z0-9._-]*` |
 | `name` | Yes | Human-readable display name |
 | `category` | Yes | `firmware`, `software`, or `operating_system` |
-| `source_type` | Yes | `text`, `json`, or `json_value` |
+| `source_type` | Yes | `text`, `json`, `json_value`, or `json_text` |
 | `source_url` | Yes | HTTP/HTTPS URL without credentials |
 
 ### Optional Fields
@@ -131,6 +131,7 @@ The full source type reference is in [`requirements/specification.md`](requireme
 | `text` | `version_pattern` | Regex on HTML/text (after `html.unescape`) |
 | `json` | `items_key`, `version_key` | Versions from a JSON list |
 | `json_value` | `value_path` | Single value via a nested JSON path |
+| `json_text` | `value_path`, `version_pattern` | Regex on a text value at a nested JSON path |
 
 ---
 

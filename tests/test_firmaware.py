@@ -81,6 +81,26 @@ class JsonValueExtractionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Version field"):
             fw.versions_from_json_value(device, json.dumps({"version": "   "}))
 
+    def test_json_text_extracts_from_nested_path(self):
+        device = {"value_path": ["article", "body"], "version_pattern": r"V\s*([0-9]+(?:\.[0-9]+)*)"}
+        content = json.dumps({"article": {"body": "Download V1.2.3 here"}})
+        self.assertEqual(fw.versions_from_json_text(device, content), {"1.2.3"})
+
+    def test_json_text_unescapes_html_entities(self):
+        device = {"value_path": ["article", "body"], "version_pattern": r"FW&([0-9]+)"}
+        content = json.dumps({"article": {"body": "FW&amp;7 released"}})
+        self.assertEqual(fw.versions_from_json_text(device, content), {"7"})
+
+    def test_json_text_missing_value_fails(self):
+        device = {"value_path": ["article", "body"], "version_pattern": r"x"}
+        with self.assertRaisesRegex(ValueError, "Value at json path"):
+            fw.versions_from_json_text(device, json.dumps({"article": {}}))
+
+    def test_json_text_two_groups_rejected(self):
+        device = {"value_path": ["article", "body"], "version_pattern": r"(a)(b)"}
+        with self.assertRaisesRegex(ValueError, "capturing group"):
+            fw.versions_from_json_text(device, json.dumps({"article": {"body": "ab"}}))
+
 
 class ExtractDispatchTests(unittest.TestCase):
     def test_unknown_source_type(self):
