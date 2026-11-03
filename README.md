@@ -352,8 +352,7 @@ firmAware/
 │   └── firmAware_onepager.png                # visual one-pager (German)
 ├── .gitignore                                # ignores devices.json, state.json, notify.json, build artifacts
 └── requirements/
-    ├── specification.md                      # project specification
-    └── firmAware-requirement-geraeteprofile.md
+    └── specification.md                      # project specification
 ```
 
 ## Limitations

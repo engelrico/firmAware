@@ -33,8 +33,7 @@ firmAware/
 ├── tests/
 │   └── test_firmaware.py     # automated tests (standard library only)
 ├── requirements/
-│   ├── specification.md      # detailed technical specification
-│   └── firmAware-requirement-geraeteprofile.md
+│   └── specification.md      # detailed technical specification
 ├── .opencode/
 │   └── agents/
 │       └── profileCreator.md # agent for interactive profile creation
