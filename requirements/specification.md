@@ -14,7 +14,7 @@ This specification describes the current state of `firmaware.py`, `firmaware_cor
 ## 2. Technical Foundation
 
 - Python 3; exclusively standard library, no pip dependencies.
-- CLI without web interface or long-running background service.
+- CLI for scheduled runs; an optional web interface (`--serve`, section 14) runs as a foreground server. No scheduling inside the program.
 - HTTP queries via `urllib.request`.
 - JSON processing via `json`, regular expressions via `re`.
 - Automated tests via `unittest` (standard library), without network access.
@@ -27,7 +27,7 @@ This specification describes the current state of `firmaware.py`, `firmaware_cor
 | File | Purpose |
 |------|---------|
 | `firmaware.py` | Command-line entry point; re-exports the `firmaware_core` package |
-| `firmaware_core/` | Implementation: `fetch`, `sources` (source type registry), `extract`, `profiles`, `state`, `checking`, `report`, `notify`, `service` (entry management and checks without output), `locking`, `interactive`, `cli`, plus `constants` and `errors` |
+| `firmaware_core/` | Implementation: `fetch`, `sources` (source type registry), `extract`, `profiles`, `state`, `checking`, `report`, `notify`, `service` (entry management and checks without output), `locking`, `interactive`, `cli`, `web` (HTTP server and static frontend), plus `constants` and `errors` |
 | `devices.json` | Personal entry selection (direct or via profiles) |
 | `devices.template.json` | Tracked starting point with one example per entry form |
 | `profiles/*.json` | Reusable entry profiles (fetch and version extraction) |
@@ -614,7 +614,7 @@ Priority and scope are open:
 
 Automated tests with stored example responses are now implemented in `tests/test_firmaware.py` (see sections 3 and 11) and are therefore no longer listed as an open point. Reusable entry profiles were implemented with version 0.2.
 
-Web interface, Docker package, and Home Assistant integration are possible later extensions, not a prerequisite for the current prototype.
+Docker package and Home Assistant integration are possible later extensions, not a prerequisite for the current prototype.
 
 ## 13. Notification (`--notify`)
 
@@ -672,3 +672,27 @@ any committed file.
 
 Notification does not change the exit-code semantics: `0` for a successful run
 (even if a mail was sent), `1` for a configuration, check, or storage error.
+
+## 14. Web Interface (`--serve`)
+
+`python3 firmaware.py --serve [--host ADDRESS] [--port PORT] [--web-config PATH]` runs a foreground HTTP server (standard library `http.server`, threaded) with a JSON API and a static single-page frontend (`firmaware_core/web/`). It uses the same configuration and state files as the command line and the operations of `firmaware_core/service.py` (`Workspace`). `--serve` is mutually exclusive with `--check`, `--status`, and `--interactive`; `--host` and `--port` require `--serve`. Defaults: `127.0.0.1`, port `8765`.
+
+### Frontend
+Vanilla HTML, CSS, and JavaScript without build step, framework, or external request (`index.html`, `app.js`, `style.css`, `favicon.svg`). The start page is the `--status` table: entries grouped by category with the columns `ID`, `Entry`, `Last check`, `Last version`, `First seen`, `Installed`, `State`, read from the stored state without any network request. Search, a filter (all, outdated, disabled), a details panel with the version history, light and dark theme following the system, and a card layout on narrow screens. Check and editing actions are added in later steps.
+
+### API (JSON, under `/api`)
+| Request | Result |
+|---------|--------|
+| `GET /api/entries` | `{"entries": [...]}` with `id`, `name`, `custom_name`, `category`, `kind` (`profile` or `direct`), `profile`, `enabled`, `source_url`, `source_type`, `last_checked`, `latest_version`, `first_seen`, `known_versions`, `installed_version`, `installed_state` (`current`, `outdated`, `unknown`, or `null`), `error` |
+| `GET /api/entries/{id}` | the same fields plus `history` (version, `discovered_at`, `newest`), newest version first |
+| `GET /api/profiles` | `{"profiles": [...]}` with `id`, `name`, `category`, `manufacturer`, `model` of every valid profile |
+
+Errors are `{"error": "<message>"}` with status `400`, `401`, `403`, `404`, `405`, `409`, `413`, or `500`. An entry that cannot be resolved (for example a missing profile) is listed with its `error` text instead of being dropped.
+
+### Access control
+- The server binds to `127.0.0.1` by default. Any other address needs an access token: `--web-config PATH` (default `~/.config/firmaware/web.json`, `{"token": "<at least 16 characters>"}`, outside the repository, `chmod 600`); without it the server refuses to start and prints how to create the file.
+- With a token, every request must carry it as `Authorization: Bearer <token>` or as the `firmaware_token` cookie. Opening `/?token=<token>` once sets the cookie (`HttpOnly`, `SameSite=Strict`) and redirects. Tokens are compared in constant time.
+- Without a token (loopback only) the `Host` header must be `localhost`, `127.0.0.1`, or `[::1]` with the server port, which blocks DNS rebinding.
+- Requests other than `GET` must send `X-Requested-With: firmaware` and, if an `Origin` header is present, it must match the `Host`. The server sends no CORS headers.
+- Only `/`, `/app.js`, `/style.css`, and `/favicon.svg` are served as static files (no directory access). Request bodies are limited to 64 KiB. Responses carry `Content-Security-Policy: default-src 'self'`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, and `Referrer-Policy: no-referrer`.
+- Transport is plain HTTP. For access from other machines use an SSH tunnel or a reverse proxy with TLS.

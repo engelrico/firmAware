@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import http.client
 import io
 import json
 import re
@@ -21,6 +22,7 @@ from firmaware_core import extract as fw_extract
 from firmaware_core import interactive as fw_interactive
 from firmaware_core import locking as fw_locking
 from firmaware_core import service as fw_service
+from firmaware_core.web import server as fw_web
 from firmaware_core import sources as fw_sources
 
 
@@ -1524,6 +1526,182 @@ class ServiceTests(unittest.TestCase):
         )
         ws.add_entry("t.one", "first")
         self.assertEqual([v["id"] for v in ws.entries()], ["first"])
+
+
+class WebServerTests(unittest.TestCase):
+    """The HTTP layer: routing, static files, and access control."""
+
+    TOKEN = "t" * 24
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        root = Path(self._tmp.name)
+        profiles = root / "profiles"
+        profiles.mkdir()
+        (profiles / "t.one.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 2,
+                    "id": "t.one",
+                    "name": "Profile one",
+                    "category": "firmware",
+                    "source_type": "text",
+                    "source_url": "https://example.com/one",
+                    "version_pattern": r"v[0-9]+",
+                }
+            ),
+            encoding="utf-8",
+        )
+        self.workspace = fw_service.Workspace(root / "devices.json", root / "state.json", profiles)
+        fw.save_devices_file(
+            self.workspace.devices_path,
+            {"devices": [{"id": "a", "profile": "t.one", "name": "Alpha"}]},
+        )
+
+    def start(self, token=None):
+        server = fw_web.WebServer(("127.0.0.1", 0), self.workspace, token)
+        thread = threading.Thread(target=lambda: server.serve_forever(0.05), daemon=True)
+        thread.start()
+        self.addCleanup(lambda: (server.shutdown(), server.server_close(), thread.join(2)))
+        return server
+
+    def request(self, server, method, path, headers=None, body=None):
+        connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=5)
+        try:
+            connection.request(method, path, body=body, headers=headers or {})
+            response = connection.getresponse()
+            data = response.read()
+            return response, data
+        finally:
+            connection.close()
+
+    def get_json(self, server, path, headers=None):
+        response, data = self.request(server, "GET", path, headers)
+        return response.status, json.loads(data)
+
+    # --- reading -------------------------------------------------------
+
+    def test_entries_and_detail(self):
+        server = self.start()
+        status, data = self.get_json(server, "/api/entries")
+        self.assertEqual(status, 200)
+        self.assertEqual([e["id"] for e in data["entries"]], ["a"])
+        status, detail = self.get_json(server, "/api/entries/a")
+        self.assertEqual((status, detail["name"], detail["history"]), (200, "Alpha", []))
+        status, error = self.get_json(server, "/api/entries/nope")
+        self.assertEqual(status, 404)
+        self.assertIn("nope", error["error"])
+        status, data = self.get_json(server, "/api/profiles")
+        self.assertEqual([p["id"] for p in data["profiles"]], ["t.one"])
+
+    def test_security_headers_on_every_response(self):
+        server = self.start()
+        for path in ("/api/entries", "/", "/missing"):
+            response, _ = self.request(server, "GET", path)
+            self.assertEqual(response.getheader("X-Content-Type-Options"), "nosniff", path)
+            self.assertIn("default-src 'self'", response.getheader("Content-Security-Policy"), path)
+
+    def test_static_files_are_served(self):
+        server = self.start()
+        for path, marker in (("/", b"<title>firmAware</title>"), ("/app.js", b"api("), ("/style.css", b"--bg")):
+            response, data = self.request(server, "GET", path)
+            self.assertEqual(response.status, 200, path)
+            self.assertIn(marker, data, path)
+
+    def test_only_listed_static_files_are_reachable(self):
+        server = self.start()
+        for path in ("/../firmaware.py", "/%2e%2e/firmaware.py", "/static/app.js", "/server.py", "/api"):
+            response, _ = self.request(server, "GET", path)
+            self.assertEqual(response.status, 404, path)
+
+    # --- access control --------------------------------------------------
+
+    def test_foreign_host_header_is_rejected_without_token(self):
+        server = self.start()
+        response, _ = self.request(server, "GET", "/api/entries", headers={"Host": "evil.example"})
+        self.assertEqual(response.status, 403)
+        port = server.server_address[1]
+        for host in (f"localhost:{port}", f"127.0.0.1:{port}"):
+            response, _ = self.request(server, "GET", "/api/entries", headers={"Host": host})
+            self.assertEqual(response.status, 200, host)
+
+    def test_changing_requests_need_the_page_header_and_same_origin(self):
+        server = self.start()
+        response, _ = self.request(server, "POST", "/api/entries", body=b"{}")
+        self.assertEqual(response.status, 403)
+        headers = {"X-Requested-With": "firmaware", "Origin": "http://evil.example"}
+        response, _ = self.request(server, "POST", "/api/entries", headers=headers, body=b"{}")
+        self.assertEqual(response.status, 403)
+        headers = {"X-Requested-With": "firmaware"}
+        response, _ = self.request(server, "POST", "/api/entries", headers=headers, body=b"{}")
+        self.assertEqual(response.status, 405)  # allowed through, but no such write route yet
+
+    def test_token_is_required_when_configured(self):
+        server = self.start(self.TOKEN)
+        response, _ = self.request(server, "GET", "/api/entries")
+        self.assertEqual(response.status, 401)
+        response, _ = self.request(server, "GET", "/")
+        self.assertEqual(response.status, 401)
+        response, _ = self.request(server, "GET", "/api/entries", headers={"Authorization": "Bearer wrong"})
+        self.assertEqual(response.status, 401)
+        response, _ = self.request(
+            server, "GET", "/api/entries", headers={"Authorization": f"Bearer {self.TOKEN}"}
+        )
+        self.assertEqual(response.status, 200)
+
+    def test_token_in_url_sets_a_strict_cookie(self):
+        server = self.start(self.TOKEN)
+        response, _ = self.request(server, "GET", f"/?token={self.TOKEN}")
+        self.assertEqual(response.status, 303)
+        cookie = response.getheader("Set-Cookie")
+        self.assertIn("HttpOnly", cookie)
+        self.assertIn("SameSite=Strict", cookie)
+        value = cookie.split(";")[0]
+        response, _ = self.request(server, "GET", "/api/entries", headers={"Cookie": value})
+        self.assertEqual(response.status, 200)
+        response, _ = self.request(server, "GET", "/?token=nope")
+        self.assertEqual(response.status, 401)
+
+    def test_network_binding_requires_a_token(self):
+        with self.assertRaises(ValueError):
+            fw_web.WebServer(("0.0.0.0", 0), self.workspace, None)
+        server = fw_web.WebServer(("0.0.0.0", 0), self.workspace, self.TOKEN)
+        server.server_close()
+
+    def test_load_web_token(self):
+        path = Path(self._tmp.name) / "web.json"
+        self.assertIsNone(fw_web.load_web_token(path))
+        path.write_text(json.dumps({"token": "short"}), encoding="utf-8")
+        with self.assertRaises(ValueError):
+            fw_web.load_web_token(path)
+        path.write_text(json.dumps({"token": self.TOKEN}), encoding="utf-8")
+        self.assertEqual(fw_web.load_web_token(path), self.TOKEN)
+
+    def test_is_loopback(self):
+        for host in ("127.0.0.1", "localhost", "::1"):
+            self.assertTrue(fw_web.is_loopback(host), host)
+        for host in ("0.0.0.0", "192.168.1.5", "example.com", "::"):
+            self.assertFalse(fw_web.is_loopback(host), host)
+
+    # --- command line ----------------------------------------------------
+
+    def test_host_and_port_require_serve(self):
+        with contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit):
+                fw.parse_args(["--host", "0.0.0.0"])
+            with self.assertRaises(SystemExit):
+                fw.parse_args(["--port", "9000", "--check"])
+        args = fw.parse_args(["--serve", "--port", "9000"])
+        self.assertTrue(args.serve)
+        self.assertEqual(args.port, 9000)
+
+    def test_serve_refuses_network_address_without_token(self):
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            code = fw_web.serve(self.workspace, "0.0.0.0", 0, Path(self._tmp.name) / "none.json")
+        self.assertEqual(code, 1)
+        self.assertIn("token is required", err.getvalue())
 
 
 class SourceTypeRegistryTests(unittest.TestCase):

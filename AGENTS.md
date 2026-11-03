@@ -23,7 +23,7 @@ This document helps AI agents working on the firmAware project understand the co
 firmAware/
 ├── firmaware.py              # command-line entry point (re-exports firmaware_core)
 ├── firmaware_core/           # implementation: fetch, sources, extract, profiles, state, checking,
-│                             #   report, notify, service, locking, interactive, cli (+ constants, errors)
+│                             #   report, notify, service, locking, interactive, cli, web/ (+ constants, errors)
 ├── devices.template.json     # starting point: one example per entry form
 ├── devices.json              # personal entry selection (git-ignored)
 ├── profiles/                 # reusable device profiles (*.json)
@@ -131,7 +131,7 @@ python3 -m unittest discover -s tests -t .
 4. **Never modify `devices.json` or `state.json` without explicit user confirmation.**
 5. **Profile IDs must match `[a-z0-9][a-z0-9._-]*`.** No uppercase, no slashes, no spaces.
 6. **Tests must pass** after any change to `firmaware.py`, `firmaware_core/`, or `tests/test_firmaware.py`.
-7. **All UI text, error messages, and documentation must be in English.**
+7. **All UI text, error messages, and documentation must be in English.** The web frontend (`firmaware_core/web/static/`) is vanilla HTML/CSS/JS: no build step, no framework, no third-party or external requests.
 8. **`devices.json` and `state.json` are local files.** Both are git-ignored and must never be committed; the repo ships `devices.template.json` (one example per entry form) and `state.template.json` (empty `{"devices": {}}`).
 9. **Documentation Sync:** Each fact lives in one place: schema, behavior, and output in `requirements/specification.md`; CLI options and user-facing usage in `README.md`. When changing `firmaware.py`, `firmaware_core/`, `profiles/*.json`, `devices.json`, `state.json`, or the CLI, update those two files. Update `AGENTS.md` and `CONTRIBUTING.md` only when conventions or workflow change; link to the specification instead of copying tables. All documentation must be in English.
 

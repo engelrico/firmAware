@@ -4,6 +4,9 @@ from __future__ import annotations
 import re
 
 
+DEFAULT_WEB_HOST = "127.0.0.1"
+DEFAULT_WEB_PORT = 8765
+
 DESCRIPTION = "firmAware – Check firmware sources for new version labels."
 USER_AGENT = "firmAware/0.1"
 ACCEPT_HEADER = "application/json,text/html,*/*"

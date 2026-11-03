@@ -77,6 +77,10 @@ python3 firmaware.py --devices /path/devices.json --state /path/state.json
 | `--check` | Check sources and update state (default) |
 | `--status` | Only show stored state, no network request |
 | `--interactive`, `-i` | Interactively manage entries (check, history, reorder, edit, duplicate, delete, disable) |
+| `--serve` | Run the web interface (status, history; checks and editing follow) |
+| `--host ADDRESS` | Address for `--serve` (default `127.0.0.1`; any other address needs an access token) |
+| `--port PORT` | Port for `--serve` (default `8765`) |
+| `--web-config PATH` | Path to the web access token config (default: `~/.config/firmaware/web.json`) |
 | `--devices PATH` | Path to `devices.json` (default: next to the script) |
 | `--state PATH` | Path to `state.json` (default: next to the script) |
 | `--profiles-dir PATH` | Directory with device profiles (default: `profiles` next to the script) |
@@ -85,7 +89,7 @@ python3 firmaware.py --devices /path/devices.json --state /path/state.json
 | `--notify-config PATH` | Path to the SMTP config (default: `~/.config/firmaware/notify.json`) |
 | `--quiet` | Suppress normal output (for cron logs); errors still go to stderr |
 
-`--check`, `--status`, and `--interactive` are mutually exclusive.
+`--check`, `--status`, `--interactive`, and `--serve` are mutually exclusive.
 Without arguments, `devices.json`, `state.json`, and `profiles/` are looked up
 relative to the directory of the Python file – **not** relative to the current
 working directory. An explicitly relative `--profiles-dir`, however, is resolved
@@ -245,6 +249,32 @@ and in `--status` / `--check` but skipped by the actual check.
 python3 firmaware.py --interactive
 ```
 
+## Web interface
+
+`--serve` starts a local web interface with the status table as start page
+(grouped by category, with installed version and state), a details panel with the
+version history, search, and filters. It works on phones and follows the system
+light/dark theme. Checks and entry editing follow in the next steps.
+
+```bash
+python3 firmaware.py --serve            # http://localhost:8765/
+python3 firmaware.py --serve --port 9000
+```
+
+By default the server is reachable only from the same machine. To open it from
+another computer, bind to a network address and create an access token **outside**
+the repository:
+
+```bash
+mkdir -p ~/.config/firmaware && python3 -c "import json,secrets;print(json.dumps({'token': secrets.token_urlsafe(24)}))" > ~/.config/firmaware/web.json
+chmod 600 ~/.config/firmaware/web.json
+python3 firmaware.py --serve --host 0.0.0.0
+```
+
+Open `http://<host>:8765/?token=<token>` once; the browser then keeps a cookie.
+The connection is plain HTTP, so on untrusted networks use an SSH tunnel
+(`ssh -L 8765:localhost:8765 <host>`) or a reverse proxy with TLS instead.
+
 ## State: `state.json`
 
 `state.json` is your **private** runtime state. It is git-ignored and created
@@ -365,7 +395,8 @@ firmAware/
 │   ├── state.py, locking.py                  # state/devices files, merge-on-write, file lock
 │   ├── checking.py, service.py               # comparison, CheckResult; entry management and checks
 │   ├── report.py, notify.py                  # terminal output, e-mail notification
-│   └── interactive.py, cli.py                # interactive manager, argument parsing and run
+│   ├── interactive.py, cli.py                # interactive manager, argument parsing and run
+│   └── web/                                  # web interface: server.py, static/ (HTML, JS, CSS)
 ├── devices.template.json                     # starting point: one example per entry form
 ├── devices.json                              # personal device selection (git-ignored)
 ├── profiles/                                 # reusable device profiles
@@ -385,7 +416,7 @@ firmAware/
 
 ## Limitations
 
-- No automatic scheduling and no long-running background service (scheduling is left to cron or a similar tool).
+- No automatic scheduling (left to cron or a similar tool); the optional web interface is a foreground server you start yourself.
 - Email notification is opt-in via `--notify` and needs an external SMTP relay; no push or MQTT notifications.
 - No semantic version comparison ("higher/lower") for upgrade decisions; the
   displayed "Last version" is the highest detected label using a best-effort

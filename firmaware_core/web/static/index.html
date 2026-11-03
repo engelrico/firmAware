@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>firmAware</title>
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand"><span class="logo" aria-hidden="true"></span><h1>firmAware</h1></div>
+    <div class="tools">
+      <input id="search" type="search" placeholder="Search entries" aria-label="Search entries" autocomplete="off">
+      <div class="seg" role="group" aria-label="Filter">
+        <button type="button" data-filter="all" aria-pressed="true">All</button>
+        <button type="button" data-filter="outdated" aria-pressed="false">Outdated</button>
+        <button type="button" data-filter="disabled" aria-pressed="false">Disabled</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <p id="summary" class="summary" aria-live="polite"></p>
+    <div id="message" class="message" role="status" hidden></div>
+    <div id="groups"></div>
+  </main>
+
+  <div id="scrim" class="scrim" hidden></div>
+  <aside id="panel" class="panel" role="dialog" aria-modal="true" aria-labelledby="panel-title" hidden>
+    <div class="panel-head">
+      <h2 id="panel-title"></h2>
+      <button type="button" id="panel-close" class="icon-btn" aria-label="Close details">&times;</button>
+    </div>
+    <div id="panel-body" class="panel-body"></div>
+  </aside>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

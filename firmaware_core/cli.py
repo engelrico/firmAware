@@ -9,12 +9,20 @@ from pathlib import Path
 from typing import Any
 
 from .checking import name_column_width
-from .constants import CATEGORY_DISPLAY_NAMES, CATEGORY_ORDER, DESCRIPTION
+from .constants import (
+    CATEGORY_DISPLAY_NAMES,
+    CATEGORY_ORDER,
+    DEFAULT_WEB_HOST,
+    DEFAULT_WEB_PORT,
+    DESCRIPTION,
+)
 from .interactive import run_interactive
 from .notify import build_notification, format_failure, notify_check_failed, send_notification
 from .profiles import resolve_devices
 from .report import print_status, process_device
+from .service import Workspace
 from .state import load_state, read_json, update_state, validate_config
+from .web.server import serve
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -31,6 +39,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--status",
         action="store_true",
         help="Only show stored state compactly, no network request",
+    )
+    mode.add_argument(
+        "--serve",
+        action="store_true",
+        help="Run the web interface (status, checks, entry management)",
     )
     mode.add_argument(
         "--interactive",
@@ -65,6 +78,26 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Suppress normal output (for cron logs); errors still go to stderr",
     )
     parser.add_argument(
+        "--host",
+        default=None,
+        metavar="ADDRESS",
+        help="Address for --serve (default: 127.0.0.1; other addresses need a token)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=None,
+        metavar="PORT",
+        help="Port for --serve (default: 8765)",
+    )
+    parser.add_argument(
+        "--web-config",
+        type=Path,
+        default=Path.home() / ".config" / "firmaware" / "web.json",
+        metavar="PATH",
+        help="Path to the web access token config (default: ~/.config/firmaware/web.json)",
+    )
+    parser.add_argument(
         "--device",
         "-d",
         type=str,
@@ -78,13 +111,20 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         nargs="?",
         help="ID of the entry to check or show (shortcut for --device)",
     )
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if (args.host is not None or args.port is not None) and not args.serve:
+        parser.error("--host and --port require --serve")
+    return args
 
 
 def run(args: argparse.Namespace) -> int:
     """Run the check or status output depending on the argument."""
     if args.interactive:
         return run_interactive(args.devices, args.profiles_dir, args.state)
+
+    if args.serve:
+        workspace = Workspace(args.devices, args.state, args.profiles_dir)
+        return serve(workspace, args.host or DEFAULT_WEB_HOST, args.port or DEFAULT_WEB_PORT, args.web_config)
 
     if not args.devices.exists():
         print(
