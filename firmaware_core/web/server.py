@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from ..service import NotFoundError, ServiceError, Workspace
+from ..service import ServiceError, Workspace
 from ..state import read_json
 from .jobs import CheckJobs
 

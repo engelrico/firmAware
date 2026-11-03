@@ -16,7 +16,6 @@ from .constants import (
     DEFAULT_WEB_PORT,
     DESCRIPTION,
 )
-from .interactive import run_interactive
 from .notify import build_notification, format_failure, notify_check_failed, send_notification
 from .profiles import resolve_devices
 from .report import print_status, process_device
@@ -49,7 +48,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--interactive",
         "-i",
         action="store_true",
-        help="Interactively manage entries (reorder, edit, duplicate, delete, disable)",
+        help=argparse.SUPPRESS,  # replaced by --serve; kept to point users there
     )
     parser.add_argument("--devices", type=Path, default=base / "devices.json")
     parser.add_argument("--state", type=Path, default=base / "state.json")
@@ -120,7 +119,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 def run(args: argparse.Namespace) -> int:
     """Run the check or status output depending on the argument."""
     if args.interactive:
-        return run_interactive(args.devices, args.profiles_dir, args.state)
+        print(
+            "The interactive mode was replaced by the web interface. Run: "
+            "python3 firmaware.py --serve",
+            file=sys.stderr,
+        )
+        return 1
 
     if args.serve:
         workspace = Workspace(args.devices, args.state, args.profiles_dir)
@@ -130,7 +134,7 @@ def run(args: argparse.Namespace) -> int:
         print(
             f"No configuration yet: {args.devices.name} does not exist. "
             f"Copy devices.template.json to {args.devices.name} and add your "
-            "entries, or run --interactive to create one.",
+            "entries, or run --serve to create it in the web interface.",
             file=sys.stderr,
         )
         notify_check_failed(
@@ -253,7 +257,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("\nAborted (Ctrl+C).", file=sys.stderr)
         return 130
     except Exception as error:  # unexpected abort: notify before giving up
-        if not args.interactive:
+        if not (args.interactive or args.serve):
             notify_check_failed(args, format_failure(error))
         print(f"Check error: {error}", file=sys.stderr)
         return 1

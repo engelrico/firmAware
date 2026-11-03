@@ -40,8 +40,8 @@ cp devices.template.json devices.json
 
 `devices.json` is git-ignored, like `state.json`. The template ships one
 example per entry form (a profile binding and a direct `text` source with a
-placeholder URL) – replace them with your own entries, or use `--interactive`
-to build the list in the terminal.
+placeholder URL) – replace them with your own entries, or skip the file and
+build the list in the web interface (`--serve`).
 
 Standard run – check sources and update state:
 
@@ -58,10 +58,10 @@ python3 firmaware.py --status
 
 ![firmAware --status output](docs/status-table.png)
 
-Manage entries interactively (arrow-key menu):
+Manage entries, run checks, and see the status in the browser:
 
 ```bash
-python3 firmaware.py --interactive
+python3 firmaware.py --serve
 ```
 
 Custom file paths:
@@ -76,8 +76,7 @@ python3 firmaware.py --devices /path/devices.json --state /path/state.json
 |---|---|
 | `--check` | Check sources and update state (default) |
 | `--status` | Only show stored state, no network request |
-| `--interactive`, `-i` | Interactively manage entries (check, history, reorder, edit, duplicate, delete, disable) |
-| `--serve` | Run the web interface (status, checks, entry editing) |
+| `--serve` | Run the web interface (status, checks, entry editing; replaces the former `--interactive` mode) |
 | `--host ADDRESS` | Address for `--serve` (default `127.0.0.1`; any other address needs an access token) |
 | `--port PORT` | Port for `--serve` (default `8765`) |
 | `--web-config PATH` | Path to the web access token config (default: `~/.config/firmaware/web.json`) |
@@ -89,7 +88,7 @@ python3 firmaware.py --devices /path/devices.json --state /path/state.json
 | `--notify-config PATH` | Path to the SMTP config (default: `~/.config/firmaware/notify.json`) |
 | `--quiet` | Suppress normal output (for cron logs); errors still go to stderr |
 
-`--check`, `--status`, `--interactive`, and `--serve` are mutually exclusive.
+`--check`, `--status`, and `--serve` are mutually exclusive.
 Without arguments, `devices.json`, `state.json`, and `profiles/` are looked up
 relative to the directory of the Python file – **not** relative to the current
 working directory. An explicitly relative `--profiles-dir`, however, is resolved
@@ -149,8 +148,8 @@ line; and a notification mail lists outdated devices (it is still only sent
 when there are new versions or warnings). Both entries share one fetch per
 run. The comparison uses the highest known version label; sources with
 several release tracks may report devices on an older track as outdated.
-You can maintain the value in the interactive manager (*Set installed
-version* or *Mark as updated to latest*).
+You can maintain the value in the web interface (*Installed version* or
+*Mark as updated to latest* in the details panel).
 
 ### Direct
 
@@ -222,32 +221,6 @@ only `id`, `profile`, and optionally `name`/`enabled`:
 
 FirmAware never fetches a source while you are creating a profile; you supply
 the current version label yourself.
-
-## Interactive entry manager
-
-`--interactive` (`-i`) opens an arrow-key navigable list of all entries in
-`devices.json`. Selecting an entry opens a submenu with these actions:
-
-| Action | Description |
-|---|---|
-| Check now | Fetch the entry's source and show new versions; state is saved |
-| Version history | List all known versions from `state.json`, sorted, with discovery timestamps and a `◄ newest` marker |
-| Move up / Move down | Change the entry's position in `devices.json` |
-| Edit name | Change the local display name (pre-filled with the current value) |
-| Set installed version | Record the version installed on this device (empty clears it) |
-| Mark as updated to latest | Set the installed version to the highest known version |
-| Duplicate entry | Copy the entry with a new user-supplied ID (the installed version is not copied) |
-| Delete entry | Remove the entry after confirmation |
-| Disable / Enable | Toggle `enabled`; disabled entries are skipped during `--check` and marked `[off]` / `[disabled]` |
-| Back to list | Return to the entry list |
-
-Changes are written to `devices.json` only after the save prompt on exit;
-discarding leaves the file untouched. Disabled entries are visible in the list
-and in `--status` / `--check` but skipped by the actual check.
-
-```bash
-python3 firmaware.py --interactive
-```
 
 ## Web interface
 
@@ -409,7 +382,7 @@ firmAware/
 │   ├── state.py, locking.py                  # state/devices files, merge-on-write, file lock
 │   ├── checking.py, service.py               # comparison, CheckResult; entry management and checks
 │   ├── report.py, notify.py                  # terminal output, e-mail notification
-│   ├── interactive.py, cli.py                # interactive manager, argument parsing and run
+│   ├── cli.py                                # argument parsing and run
 │   └── web/                                  # web interface: server.py, static/ (HTML, JS, CSS)
 ├── devices.template.json                     # starting point: one example per entry form
 ├── devices.json                              # personal device selection (git-ignored)

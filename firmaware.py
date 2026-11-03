@@ -24,7 +24,6 @@ from firmaware_core.notify import *  # noqa: F401,F403
 from firmaware_core.profiles import *  # noqa: F401,F403
 from firmaware_core.checking import *  # noqa: F401,F403
 from firmaware_core.report import *  # noqa: F401,F403
-from firmaware_core.interactive import *  # noqa: F401,F403
 from firmaware_core.service import *  # noqa: F401,F403
 from firmaware_core.cli import *  # noqa: F401,F403
 

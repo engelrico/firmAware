@@ -20,7 +20,6 @@ from unittest import mock
 import firmaware as fw
 from firmaware_core import checking as fw_checking
 from firmaware_core import extract as fw_extract
-from firmaware_core import interactive as fw_interactive
 from firmaware_core import locking as fw_locking
 from firmaware_core import service as fw_service
 from firmaware_core.web import server as fw_web
@@ -2064,31 +2063,33 @@ class InstalledVersionTests(unittest.TestCase):
         self.assertEqual(subject, "firmAware: 1 new version found")
         self.assertNotIn("Outdated", body)
 
-    # --- interactive helpers ---
+    # --- helpers shared with the web interface ---
 
     def test_set_and_clear_installed_version(self):
         entry = {"id": "a"}
-        fw_interactive.set_installed_version(entry, "  v3 ")
+        fw_service.set_installed_version(entry, "  v3 ")
         self.assertEqual(entry["installed_version"], "v3")
-        fw_interactive.set_installed_version(entry, "  ")
+        fw_service.set_installed_version(entry, "  ")
         self.assertNotIn("installed_version", entry)
 
     def test_mark_installed_latest(self):
         entry = {"id": "a"}
-        self.assertIsNone(fw_interactive.mark_installed_latest(entry, {}))
+        self.assertIsNone(fw_service.mark_installed_latest(entry, {}))
         self.assertNotIn("installed_version", entry)
-        latest = fw_interactive.mark_installed_latest(entry, {"1.9": "t", "1.10": "t"})
+        latest = fw_service.mark_installed_latest(entry, {"1.9": "t", "1.10": "t"})
         self.assertEqual(latest, "1.10")
         self.assertEqual(entry["installed_version"], "1.10")
 
-    def test_duplicate_does_not_copy_installed_version(self):
-        raw = [self.entry("a", "v1")]
-        with mock.patch.object(fw_interactive, "prompt_nonempty", return_value="b"):
-            with contextlib.redirect_stdout(io.StringIO()):
-                fw_interactive.duplicate_entry(raw, 0, {"a"})
-        self.assertEqual(raw[1]["id"], "b")
-        self.assertNotIn("installed_version", raw[1])
-        self.assertEqual(raw[0]["installed_version"], "v1")
+    def test_interactive_option_points_to_the_web_interface(self):
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            code = fw.main(["--interactive"])
+        self.assertEqual(code, 1)
+        self.assertIn("--serve", err.getvalue())
+        self.assertNotIn("--interactive", subprocess.run(
+            [sys.executable, str(Path(__file__).resolve().parent.parent / "firmaware.py"), "--help"],
+            capture_output=True, text=True, timeout=30, check=False,
+        ).stdout)
 
 
 class WebFrontendLogicTests(unittest.TestCase):

@@ -6,7 +6,6 @@ import sys
 import threading
 import traceback
 from collections.abc import Sequence
-from datetime import datetime
 from typing import Any
 
 from ..checking import current_timestamp

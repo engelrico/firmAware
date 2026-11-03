@@ -27,7 +27,7 @@ This specification describes the current state of `firmaware.py`, `firmaware_cor
 | File | Purpose |
 |------|---------|
 | `firmaware.py` | Command-line entry point; re-exports the `firmaware_core` package |
-| `firmaware_core/` | Implementation: `fetch`, `sources` (source type registry), `extract`, `profiles`, `state`, `checking`, `report`, `notify`, `service` (entry management and checks without output), `locking`, `interactive`, `cli`, `web` (HTTP server and static frontend), plus `constants` and `errors` |
+| `firmaware_core/` | Implementation: `fetch`, `sources` (source type registry), `extract`, `profiles`, `state`, `checking`, `report`, `notify`, `service` (entry management and checks without output), `locking`, `cli`, `web` (HTTP server and static frontend), plus `constants` and `errors` |
 | `devices.json` | Personal entry selection (direct or via profiles) |
 | `devices.template.json` | Tracked starting point with one example per entry form |
 | `profiles/*.json` | Reusable entry profiles (fetch and version extraction) |
@@ -49,28 +49,15 @@ Show stored state without a network request:
 python3 firmaware.py --status
 ```
 
-Interactively manage entries in `devices.json` (reorder, edit, duplicate, delete, disable/enable, check, history):
+Manage entries, run checks, and see the status in a browser (section 14):
 
 ```bash
-python3 firmaware.py --interactive
+python3 firmaware.py --serve
 ```
 
-The interactive mode opens an arrow-key navigable list of all entries. Selecting an entry opens a submenu with the following actions:
+The former `--interactive` terminal mode was replaced by the web interface. `--interactive` and `-i` remain only as hidden options that print a pointer to `--serve` on `stderr` and exit with code `1`.
 
-| Action | Description |
-|--------|-------------|
-| Check now | Fetch the entry's source and show new versions; state is saved |
-| Version history | List all known versions from `state.json`, sorted, with discovery timestamps |
-| Move up / Move down | Change the entry's position in `devices.json` |
-| Edit name | Change the local display name (pre-filled with the current value) |
-| Duplicate entry | Copy the entry with a new user-supplied ID |
-| Delete entry | Remove the entry after confirmation |
-| Disable / Enable | Toggle `enabled`; disabled entries are skipped during `--check` and shown as `[off]` |
-| Back to list | Return to the entry list |
-
-Changes are written to `devices.json` only when saving on exit.
-
-`--check`, `--status`, and `--interactive` are mutually exclusive. `--profiles-dir PATH` applies to the check, status, and interactive modes.
+`--check`, `--status`, and `--serve` are mutually exclusive. `--profiles-dir PATH` applies to all three modes.
 
 Custom file paths:
 
@@ -118,7 +105,7 @@ The configuration is split into two levels:
 
 An entry is configured either directly (with all technical fields in `devices.json`) or profile-based (via a profile reference). Both forms may be mixed. The root object contains a list `devices`; every local entry ID must be unique. The implementation supports the source types `text`, `json`, and `json_value`.
 
-**Local and private:** `devices.json` is per-user configuration and is git-ignored; it is never committed. The repository ships `devices.template.json` with one example per entry form: one profile-based entry and one direct `text` entry with a placeholder URL. On a missing configuration the program prints `No configuration yet: devices.json does not exist. Copy devices.template.json to devices.json and add your entries, or run --interactive to create one.` to `stderr` and exits with code `1`. The interactive mode creates the file on the first save.
+**Local and private:** `devices.json` is per-user configuration and is git-ignored; it is never committed. The repository ships `devices.template.json` with one example per entry form: one profile-based entry and one direct `text` entry with a placeholder URL. On a missing configuration the program prints `No configuration yet: devices.json does not exist. Copy devices.template.json to devices.json and add your entries, or run --serve to create it in the web interface.` to `stderr` and exits with code `1`. The web interface starts with an empty list when the file is missing and creates it on the first change.
 
 ### 4.1 Common Fields in devices.json
 
@@ -360,7 +347,7 @@ A profile describes a device **type**; an entry describes one concrete **device*
 { "id": "tolino-living-room", "profile": "tolino.shine-4", "name": "Tolino (living room)", "installed_version": "5.1.2" }
 ```
 
-- The field is user-maintained configuration in `devices.json`; the program never writes it except via the interactive mode. `state.json` is unchanged.
+- The field is user-maintained configuration in `devices.json`; the program writes it only on request from the web interface. `state.json` is unchanged.
 - It is allowed on profile-based and direct entries and is a configuration error inside a profile file or if it is not a non-empty string.
 - **Comparison:** the latest known version is `max(discovered_at, key=version_sort_key)`. The installed version is `current` if its sort key is greater than or equal to the latest one, `outdated` if lower, `unknown` if nothing has been discovered yet, and not set if the field is missing.
 - Sources that publish several release tracks (for example Apple iOS 18.x and 26.x) report a device on an older track as `outdated`, because the comparison uses the highest label only.
@@ -643,7 +630,7 @@ Raspberry Pi). It uses only the standard library (`smtplib`,
   `stderr` and the process exits with code `130`. It never triggers a
   notification.
 - The failure notification for aborted runs is sent from a top-level error
-  handler around the whole run (not for `--interactive`).
+  handler around the whole run (not for `--serve`).
 - A notification failure (broken config, unreachable SMTP) is printed to
   `stderr` as `Notification error: ...` and never changes the exit code or
   crashes the check.
@@ -675,13 +662,13 @@ Notification does not change the exit-code semantics: `0` for a successful run
 
 ## 14. Web Interface (`--serve`)
 
-`python3 firmaware.py --serve [--host ADDRESS] [--port PORT] [--web-config PATH]` runs a foreground HTTP server (standard library `http.server`, threaded) with a JSON API and a static single-page frontend (`firmaware_core/web/`). It uses the same configuration and state files as the command line and the operations of `firmaware_core/service.py` (`Workspace`). `--serve` is mutually exclusive with `--check`, `--status`, and `--interactive`; `--host` and `--port` require `--serve`. Defaults: `127.0.0.1`, port `8765`.
+`python3 firmaware.py --serve [--host ADDRESS] [--port PORT] [--web-config PATH]` runs a foreground HTTP server (standard library `http.server`, threaded) with a JSON API and a static single-page frontend (`firmaware_core/web/`). It uses the same configuration and state files as the command line and the operations of `firmaware_core/service.py` (`Workspace`). `--serve` is mutually exclusive with `--check` and `--status`; `--host` and `--port` require `--serve`. Defaults: `127.0.0.1`, port `8765`.
 
 ### Frontend
 Vanilla HTML, CSS, and JavaScript without build step, framework, or external request (`index.html`, `app.js`, `style.css`, `favicon.svg`). The start page is the `--status` table: entries grouped by category with the columns `ID`, `Entry`, `Last check`, `Last version`, `First seen`, `Installed`, `State`, read from the stored state without any network request. Search, a filter (all, outdated, disabled), light and dark theme following the system, and a card layout on narrow screens.
 
 - **Check** (like `--check`): "Check all" and "Check now" per entry start a background job. A result panel shows the per-entry lines the command line prints (`Baseline (N): ...`, `new: ...`, `no changes`, `outdated: installed X, latest Y`, `Check error: ...`, `[disabled]`) with a progress bar; the table refreshes when the job ends. A reloaded page resumes the latest job. The web check never sends mail; scheduled mail stays with `--check --notify`.
-- **Edit** (like `--interactive`): clicking an entry opens a details panel with the version history and these actions: edit the name (empty restores the profile name), set the installed version, mark it as updated to the latest known version, enable or disable, move up or down within its category, duplicate with a new ID (the copy has no installed version), and delete (two clicks). Rows can also be reordered by drag and drop while no filter or search is active.
+- **Edit** (replaces the former `--interactive` mode): clicking an entry opens a details panel with the version history and these actions: edit the name (empty restores the profile name), set the installed version, mark it as updated to the latest known version, enable or disable, move up or down within its category, duplicate with a new ID (the copy has no installed version), and delete (two clicks). Rows can also be reordered by drag and drop while no filter or search is active.
 - **Add:** the "Add entry" dialog lists the valid profiles (searchable, with a badge for types already in use) and creates a profile-based entry with a unique ID (suggested from the profile ID) and an optional name; the details panel of the new entry opens afterwards.
 - **Accessibility and layout:** native `<dialog>` for the add form, a focus-trapped details panel closed with `Escape`, keyboard-operable controls, `aria-live` regions for progress and messages, larger touch targets on touch screens, and no external fonts or requests. Entries from invalid configuration stay visible with their error.
 
