@@ -1,5 +1,6 @@
 // firmAware web interface: status table, checks, and entry editing. No dependencies, no build step.
 
+import { setupAddDialog } from "./add.js";
 import { closeChecks, resumeLatest, startCheck } from "./checks.js";
 import { closePanel, isOpen, openPanel, refreshPanel } from "./panel.js";
 import { state } from "./state.js";
@@ -58,7 +59,25 @@ $("#checks-close").addEventListener("click", closeChecks);
 $("#panel-close").addEventListener("click", closePanel);
 $("#scrim").addEventListener("click", closePanel);
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") closePanel();
+  if (event.key === "Escape" && !$("#add-dialog").open) closePanel();
+  if (event.key === "Tab" && isOpen()) trapFocus(event);
 });
+
+// Keep Tab inside the open details panel (it is modal).
+function trapFocus(event) {
+  const items = [...$("#panel").querySelectorAll("button, input, a[href]")].filter((node) => !node.disabled);
+  if (items.length === 0) return;
+  const first = items[0];
+  const last = items[items.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
+setupAddDialog();
 
 load().then(resumeLatest);

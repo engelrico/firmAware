@@ -18,6 +18,7 @@
         <button type="button" data-filter="outdated" aria-pressed="false">Outdated</button>
         <button type="button" data-filter="disabled" aria-pressed="false">Disabled</button>
       </div>
+      <button type="button" id="add-entry" class="btn">Add entry</button>
       <button type="button" id="check-all" class="btn primary" data-check>Check all</button>
     </div>
   </header>
@@ -45,6 +46,36 @@
     </div>
     <div id="panel-body" class="panel-body"></div>
   </aside>
+
+  <dialog id="add-dialog" class="dialog" aria-labelledby="add-title">
+    <form id="add-form" autocomplete="off">
+      <div class="panel-head">
+        <h2 id="add-title">Add entry</h2>
+        <button type="button" id="add-close" class="icon-btn" aria-label="Close dialog">&times;</button>
+      </div>
+      <div class="dialog-body">
+        <p class="muted">Pick the device type. Add the same type twice to track two devices of it.</p>
+        <input id="profile-search" type="search" placeholder="Search device types" aria-label="Search device types">
+        <fieldset class="profiles" id="profile-list">
+          <legend class="sr-only">Device type</legend>
+        </fieldset>
+        <div class="field">
+          <label for="add-id">ID</label>
+          <input id="add-id" type="text" pattern="[a-z0-9][a-z0-9._-]*" required placeholder="e.g. tolino-bedroom">
+          <p class="hint">Lower-case letters, digits, dot, dash, underscore. Must be unique.</p>
+        </div>
+        <div class="field">
+          <label for="add-name">Name (optional)</label>
+          <input id="add-name" type="text" placeholder="Defaults to the device type name">
+        </div>
+        <p id="add-error" class="form-error" role="alert" hidden></p>
+      </div>
+      <div class="dialog-foot">
+        <button type="button" id="add-cancel" class="btn">Cancel</button>
+        <button type="submit" id="add-submit" class="btn primary" disabled>Add entry</button>
+      </div>
+    </form>
+  </dialog>
 
   <div id="toasts" class="toasts" role="status" aria-live="polite"></div>
 

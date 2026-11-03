@@ -259,9 +259,16 @@ light/dark theme.
 - **Check:** *Check all* or *Check now* per entry runs the same check as `--check`
   and shows the result lines with a progress bar (no mail is sent; that stays with
   `--check --notify`).
+- **Add:** *Add entry* lists the device types (profiles); pick one, choose a
+  unique ID and optionally a name. Add the same type twice to track two devices
+  of it.
 - **Edit:** click an entry to rename it, set its installed version (or mark it as
   updated to the latest), enable or disable it, move it up or down, duplicate it,
   or delete it. Rows can also be dragged to reorder them within a category.
+
+![firmAware web interface: status table and check results](docs/web-status.jpg)
+
+![firmAware web interface: entry details and editing](docs/web-details.jpg)
 
 ```bash
 python3 firmaware.py --serve            # http://localhost:8765/
@@ -415,6 +422,7 @@ firmAware/
 ├── docs/                                     # screenshots used in this README
 │   ├── cli-help.png                          # rendered --help output
 │   ├── status-table.png                      # rendered --status output
+│   ├── web-status.jpg, web-details.jpg       # web interface screenshots
 │   └── firmAware_onepager.png                # visual one-pager (German)
 ├── .gitignore                                # ignores devices.json, state.json, notify.json, build artifacts
 └── requirements/
