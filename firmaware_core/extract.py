@@ -21,7 +21,19 @@ def extract_versions(source_type: str, content: str, device: Mapping[str, Any]) 
     return sorted(versions)
 
 
-def fetch_versions(device: Mapping[str, Any]) -> list[str]:
-    """Fetch the source and return the versions found there."""
-    content = fetch_source(device)
+def fetch_versions(
+    device: Mapping[str, Any], cache: dict[tuple[str, str | None], str] | None = None
+) -> list[str]:
+    """Fetch the source and return the versions found there.
+
+    With a ``cache``, entries sharing a source (several devices of one type) fetch
+    it only once per run. Failed fetches are not cached.
+    """
+    key = (device["source_url"], device.get("encoding"))
+    if cache is not None and key in cache:
+        content = cache[key]
+    else:
+        content = fetch_source(device)
+        if cache is not None:
+            cache[key] = content
     return extract_versions(device["source_type"], content, device)

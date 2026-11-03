@@ -51,7 +51,7 @@ firmAware/
 
 Every profile in `profiles/*.json` must conform to schema v2 as defined in [`requirements/specification.md#46-entry-profiles-format-and-required-fields`](requirements/specification.md#46-entry-profiles-format-and-required-fields), which is the single reference for fields, allowed values, and source types. Non-negotiable: `schema_version` is `2`, `category` is present, and the `id` matches `[a-z0-9][a-z0-9._-]*` and the filename.
 
-Profile-based entries in `devices.json` may contain **only** `id`, `profile`, `name`, and `enabled`. Technical fields are a configuration error in profile-based entries.
+Profile-based entries in `devices.json` may contain **only** `id`, `profile`, `name`, `enabled`, and `installed_version`. Technical fields are a configuration error in profile-based entries.
 
 ### Version Sorting
 

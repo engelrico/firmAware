@@ -68,6 +68,43 @@ def check_summary(
     return "no changes"
 
 
+STATE_CURRENT = "current"
+STATE_OUTDATED = "outdated"
+STATE_UNKNOWN = "unknown"
+STATE_NOT_SET = "not set"
+
+
+@dataclass(frozen=True)
+class InstalledStatus:
+    """How an entry's installed version relates to the latest known version."""
+
+    state: str
+    installed: str | None = None
+    latest: str | None = None
+
+    @property
+    def outdated(self) -> bool:
+        return self.state == STATE_OUTDATED
+
+
+def installed_status(
+    device: Mapping[str, Any], discovered: Mapping[str, Any] | None
+) -> InstalledStatus:
+    """Compare ``installed_version`` of an entry with the highest discovered version."""
+    installed = device.get("installed_version")
+    if not installed:
+        return InstalledStatus(STATE_NOT_SET)
+    if not discovered:
+        return InstalledStatus(STATE_UNKNOWN, installed=installed)
+    latest = max(discovered, key=version_sort_key)
+    state = (
+        STATE_CURRENT
+        if version_sort_key(installed) >= version_sort_key(latest)
+        else STATE_OUTDATED
+    )
+    return InstalledStatus(state, installed=installed, latest=latest)
+
+
 def current_timestamp() -> str:
     """Time of the last successful check in local time zone."""
     return datetime.now().astimezone().isoformat(timespec="seconds")
@@ -91,11 +128,15 @@ class CheckResult:
         return check_summary(self.previous, self.versions, self.new_versions)
 
 
-def check_device(device: Mapping[str, Any], state: Mapping[str, Any]) -> CheckResult:
+def check_device(
+    device: Mapping[str, Any],
+    state: Mapping[str, Any],
+    cache: dict[tuple[str, str | None], str] | None = None,
+) -> CheckResult:
     """Fetch an entry's source and compare it with the stored state."""
     previous = state.get("devices", {}).get(device["id"])
     try:
-        versions = fetch_versions(device)
+        versions = fetch_versions(device, cache)
         _, new_versions = compare_versions(versions, previous)
     except Exception as error:  # a device error does not stop the remaining devices
         return CheckResult(previous=previous, error=str(error))

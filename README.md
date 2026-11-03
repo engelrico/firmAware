@@ -121,8 +121,32 @@ may be mixed.
 ```
 
 Profile-based entries may contain **only** the fields `id`, `profile`, `name`,
-and `enabled`. Technical fields such as `source_url` are a configuration error
-here.
+`enabled`, and `installed_version`. Technical fields such as `source_url` are a
+configuration error here.
+
+### Several devices of one type, installed version
+
+A profile is a device **type**, an entry is one concrete **device**. To track
+two devices of the same type, add two entries with the same profile and
+different IDs. Record what is installed on each with `installed_version`:
+
+```json
+{
+  "devices": [
+    { "id": "tolino-living-room", "profile": "tolino.shine-4", "name": "Tolino (living room)", "installed_version": "5.1.2" },
+    { "id": "tolino-bedroom",     "profile": "tolino.shine-4", "name": "Tolino (bedroom)",     "installed_version": "5.0.1" }
+  ]
+}
+```
+
+`--status` then shows the installed version and whether it is `current` or
+`outdated`; `--check` adds `outdated: installed X, latest Y` to the entry's
+line; and a notification mail lists outdated devices (it is still only sent
+when there are new versions or warnings). Both entries share one fetch per
+run. The comparison uses the highest known version label; sources with
+several release tracks may report devices on an older track as outdated.
+You can maintain the value in the interactive manager (*Set installed
+version* or *Mark as updated to latest*).
 
 ### Direct
 
@@ -206,7 +230,9 @@ the current version label yourself.
 | Version history | List all known versions from `state.json`, sorted, with discovery timestamps and a `◄ newest` marker |
 | Move up / Move down | Change the entry's position in `devices.json` |
 | Edit name | Change the local display name (pre-filled with the current value) |
-| Duplicate entry | Copy the entry with a new user-supplied ID |
+| Set installed version | Record the version installed on this device (empty clears it) |
+| Mark as updated to latest | Set the installed version to the highest known version |
+| Duplicate entry | Copy the entry with a new user-supplied ID (the installed version is not copied) |
 | Delete entry | Remove the entry after confirmation |
 | Disable / Enable | Toggle `enabled`; disabled entries are skipped during `--check` and marked `[off]` / `[disabled]` |
 | Back to list | Return to the entry list |
@@ -266,6 +292,7 @@ Raspberry Pi or NAS).
 |---|---|
 | New versions found | `firmAware: 2 new versions found` |
 | Some entries failed, but the run finished | `firmAware: 1 warning` |
+| Devices behind the latest version | adds `1 outdated` to the subject; sent only together with new versions or warnings |
 | Check aborted (config/storage error, crash) | `firmAware: check failed` |
 
 A manual abort via `Ctrl+C` never sends a mail.
@@ -362,7 +389,7 @@ firmAware/
 - No semantic version comparison ("higher/lower") for upgrade decisions; the
   displayed "Last version" is the highest detected label using a best-effort
   numeric sort, not a guarantee that an update is available.
-- No detection of installed device firmware and no automatic installation.
+- No detection of installed device firmware (you maintain `installed_version` yourself) and no automatic installation.
 - No JavaScript execution, authentication, pagination, or bypassing of HTTP
   blocks (e.g. HTTP 403).
 - No distinction between beta and stable unless the source itself is limited.

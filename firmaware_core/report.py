@@ -6,7 +6,14 @@ from collections.abc import Mapping, Sequence
 from datetime import datetime
 from typing import Any
 
-from .checking import check_device, display_name, record_check, version_sort_key
+from .checking import (
+    STATE_NOT_SET,
+    check_device,
+    display_name,
+    installed_status,
+    record_check,
+    version_sort_key,
+)
 from .constants import CATEGORY_DISPLAY_NAMES, CATEGORY_ORDER
 
 
@@ -17,6 +24,8 @@ def process_device(
     *,
     changes: list[Mapping[str, Any]] | None = None,
     errors: list[Mapping[str, Any]] | None = None,
+    outdated: list[Mapping[str, Any]] | None = None,
+    cache: dict[tuple[str, str | None], str] | None = None,
     quiet: bool = False,
 ) -> bool:
     """Check a single device, print the result, and update the state on success."""
@@ -25,14 +34,21 @@ def process_device(
         if not quiet:
             print(f"{name:<{width}}  [disabled]")
         return True
-    result = check_device(device, state)
+    result = check_device(device, state, cache)
     if not result.ok:
         print(f"{name:<{width}}  Check error: {result.error}", file=sys.stderr)
         if errors is not None:
             errors.append({"name": name, "error": result.error})
         return False
+    record_check(state, device["id"], result)
+    status = installed_status(device, state["devices"][device["id"]]["discovered_at"])
     if not quiet:
-        print(f"{name:<{width}}  {result.summary}")
+        suffix = (
+            f"  outdated: installed {status.installed}, latest {status.latest}"
+            if status.outdated
+            else ""
+        )
+        print(f"{name:<{width}}  {result.summary}{suffix}")
     if result.new_versions and changes is not None:
         changes.append(
             {
@@ -40,9 +56,19 @@ def process_device(
                 "name": name,
                 "category": device.get("category", ""),
                 "versions": list(result.new_versions),
+                "installed": status.installed,
             }
         )
-    record_check(state, device["id"], result)
+    if status.outdated and outdated is not None:
+        outdated.append(
+            {
+                "id": device["id"],
+                "name": name,
+                "category": device.get("category", ""),
+                "installed": status.installed,
+                "latest": status.latest,
+            }
+        )
     return True
 
 
@@ -109,6 +135,9 @@ def print_status(devices: Sequence[Mapping[str, Any]], state: Mapping[str, Any])
             else:
                 latest_version = "–"
                 first_seen = "–"
+            status = installed_status(device, discovered)
+            installed = status.installed or "–"
+            installed_state = "–" if status.state == STATE_NOT_SET else status.state
             rows.append(
                 (
                     display_id,
@@ -116,10 +145,12 @@ def print_status(devices: Sequence[Mapping[str, Any]], state: Mapping[str, Any])
                     format_timestamp(entry.get("last_checked")),
                     latest_version,
                     first_seen,
+                    installed,
+                    installed_state,
                 )
             )
 
-        headers = ("ID", "Entry", "Last check", "Last version", "First seen")
+        headers = ("ID", "Entry", "Last check", "Last version", "First seen", "Installed", "State")
         if rows:
             widths = [max(len(headers[i]), *(len(row[i]) for row in rows)) for i in range(len(headers))]
         else:

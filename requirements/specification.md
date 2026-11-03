@@ -128,10 +128,11 @@ An entry is configured either directly (with all technical fields in `devices.js
 | `name` | No | Local display name; overrides the profile name for profile-based entries, otherwise the ID or profile name is shown |
 | `profile` | No | Reference to an entry profile; present = profile-based entry |
 | `enabled` | No | Boolean; `false` skips the entry during `--check`; default `true` |
+| `installed_version` | No | Non-empty string; the version label installed on this device, maintained by the user (see 4.10) |
 | `source_type` | Direct only | `text`, `json`, or `json_value` |
 | `source_url` | Direct only | URL of the source to fetch |
 
-If `profile` is set, **only** the fields `id`, `profile`, `name`, and `enabled` may occur. Technical fields such as `source_url`, `source_type`, `encoding`, or `version_pattern` are a configuration error; there is no silent overriding or ignoring. Individual technical settings remain possible via direct entries.
+If `profile` is set, **only** the fields `id`, `profile`, `name`, `enabled`, and `installed_version` may occur. Technical fields such as `source_url`, `source_type`, `encoding`, or `version_pattern` are a configuration error; there is no silent overriding or ignoring. Individual technical settings remain possible via direct entries.
 
 Additional descriptive fields such as manufacturer, model, or hardware version are not evaluated.
 
@@ -310,7 +311,7 @@ Before every check and status output, all entries are resolved and validated:
 6. Check match of profile ID with filename.
 7. Create flat entry configuration.
 8. Take over local entry ID.
-9. Take over optional local name.
+9. Take over optional local name, `enabled`, and `installed_version`.
 
 Example of resolved configuration:
 
@@ -350,6 +351,20 @@ The previous direct configuration remains supported:
 ```
 
 For direct entries: `id` is a non-empty string; `name` remains optional and otherwise the local ID is shown; technical fields are validated according to the same rules as profiles; `schema_version` is not required; a missing profile directory does not affect direct entries.
+
+### 4.10 Installed Version per Device
+
+A profile describes a device **type**; an entry describes one concrete **device**. Several entries may reference the same profile (for example two e-readers of the same model) with different local IDs and names. Each entry can record the version installed on that device in the optional field `installed_version`:
+
+```json
+{ "id": "tolino-living-room", "profile": "tolino.shine-4", "name": "Tolino (living room)", "installed_version": "5.1.2" }
+```
+
+- The field is user-maintained configuration in `devices.json`; the program never writes it except via the interactive mode. `state.json` is unchanged.
+- It is allowed on profile-based and direct entries and is a configuration error inside a profile file or if it is not a non-empty string.
+- **Comparison:** the latest known version is `max(discovered_at, key=version_sort_key)`. The installed version is `current` if its sort key is greater than or equal to the latest one, `outdated` if lower, `unknown` if nothing has been discovered yet, and not set if the field is missing.
+- Sources that publish several release tracks (for example Apple iOS 18.x and 26.x) report a device on an older track as `outdated`, because the comparison uses the highest label only.
+- Entries of the same type share one fetch per `--check` run (cache key: source URL and encoding); failed fetches are not cached.
 
 ## 5. State: state.json
 
@@ -455,15 +470,20 @@ Regular results go to stdout, errors to stderr. Output is compact, one line per 
 <Entry>  Baseline (N): v1, v2, ...   # first successful check
 <Entry>  new: v3, v4                 # newly found versions
 <Entry>  no changes                   # no new versions
+<Entry>  no changes  outdated: installed 5.1.2, latest 5.2.0   # installed version is behind
 ```
+
+The `outdated:` suffix follows any of the three summaries and appears only for entries with `installed_version` that is behind the latest known version. It is suppressed by `--quiet`.
 
 `--status` outputs the stored state in a table:
 
 ```text
-ID                            Entry                                    Last check           Last version                      First seen
-----------------------------  ---------------------------------------  -------------------  --------------------------------  -------------------
-<ID>                          <Entry>                                  2026-10-12 19:29:44  RE200(EU)_V4_210916               2026-10-12 19:29:44
+ID      Entry    Last check           Last version         First seen           Installed  State
+------  -------  -------------------  -------------------  -------------------  ---------  --------
+<ID>    <Entry>  2026-10-12 19:29:44  RE200(EU)_V4_210916  2026-10-12 19:29:44  –          –
 ```
+
+`Installed` shows `installed_version` and `State` shows `current`, `outdated`, or `unknown`; both show `–` when no installed version is set.
 
 `Last version` is the highest detected version label using best-effort numeric sorting: numeric blocks are compared position by position as integers and shorter labels are zero-padded on the right, so `27.1` > `27.0.1`, `26.7.1` > `18.7.10`, and `1.10` > `1.9`. A single numeric block of 100 000 000 or more is treated as a legacy label and ranked below multi-block labels (`6.1.1978418030` > `1978074000`). `First seen` shows when that version was first discovered by a check. Not yet checked entries appear with `never checked` and `–`. No network request and no change to the state file.
 
@@ -573,6 +593,11 @@ Live behavior: The Ubiquiti JSON structure was configured based on the response 
 | `--status` ID column | Each row shows the entry ID |
 | Clustering by category | Entries grouped under Firmware, Software, Operating System, Other |
 | Highest version shown | `max(versions, key=version_sort_key)` instead of last sorted element |
+| `installed_version` valid / invalid | Accepted (trimmed) / configuration error; not allowed in a profile file |
+| Installed older / equal / newer than latest | `outdated` / `current` / `current` |
+| Two entries of one type | One fetch per run; each shows its own state |
+| Only outdated entries, nothing new | No mail |
+| Outdated entry together with a new version | Mail with "Outdated devices" section |
 
 ## 12. Possible Next Steps – Not Implemented
 
@@ -609,6 +634,11 @@ Raspberry Pi). It uses only the standard library (`smtplib`,
 
 - A mail is sent if the run found new versions **or** recorded at least one
   entry error. A run without changes and without errors sends nothing.
+- Entries whose `installed_version` is behind the latest known version are
+  listed in an "Outdated devices" section, and the subject gets an
+  `<n> outdated` part. They never trigger a mail by themselves, so a device
+  that stays outdated does not cause a mail on every run. Under "New versions",
+  an entry shows its installed version.
 - A manual abort via `Ctrl+C` is caught cleanly: a short notice is printed to
   `stderr` and the process exits with code `130`. It never triggers a
   notification.

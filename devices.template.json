@@ -2,7 +2,8 @@
   "devices": [
     {
       "id": "coros-dura",
-      "profile": "coros.dura"
+      "profile": "coros.dura",
+      "installed_version": "1.0.0"
     },
     {
       "id": "my-router",

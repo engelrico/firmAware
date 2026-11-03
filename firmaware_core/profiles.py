@@ -12,6 +12,12 @@ from .fetch import validate_url_basic
 from .sources import SOURCE_TYPES
 
 
+def _validate_installed_version(value: Any, context: str) -> None:
+    """Require a non-empty string for the user-maintained installed version."""
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{context}: Field 'installed_version' is invalid")
+
+
 def validate_source_config(source: Mapping[str, Any], context: str) -> None:
     """Validate the technical source configuration of a device or profile.
 
@@ -70,6 +76,11 @@ def validate_profile(profile: Any, profile_id: str, context: str) -> None:
         raise ValueError(
             f"{context}: Required field 'category' missing or invalid; "
             f"allowed values: {', '.join(sorted(PROFILE_CATEGORIES))}"
+        )
+
+    if "installed_version" in profile:
+        raise ValueError(
+            f"{context}: Field 'installed_version' belongs to an entry, not to a profile"
         )
 
     for key in ("manufacturer", "model"):
@@ -143,6 +154,9 @@ def resolve_device(device: Mapping[str, Any], profiles_dir: Path) -> dict[str, A
             if not isinstance(device["enabled"], bool):
                 raise ValueError(f"Entry '{device_id}': Field 'enabled' must be a boolean")
             resolved["enabled"] = device["enabled"]
+        if "installed_version" in device:
+            _validate_installed_version(device["installed_version"], context)
+            resolved["installed_version"] = device["installed_version"].strip()
         return resolved
 
     context = f"Entry '{device_id}'"
@@ -154,6 +168,9 @@ def resolve_device(device: Mapping[str, Any], profiles_dir: Path) -> dict[str, A
     if "enabled" in resolved:
         if not isinstance(resolved["enabled"], bool):
             raise ValueError(f"{context}: Field 'enabled' must be a boolean")
+    if "installed_version" in resolved:
+        _validate_installed_version(resolved["installed_version"], context)
+        resolved["installed_version"] = resolved["installed_version"].strip()
     validate_source_config(resolved, context)
     return resolved
 

@@ -132,6 +132,8 @@ def run(args: argparse.Namespace) -> int:
     width = name_column_width(devices)
     changes: list[Mapping[str, Any]] = []
     errors: list[Mapping[str, Any]] = []
+    outdated: list[Mapping[str, Any]] = []
+    cache: dict[tuple[str, str | None], str] = {}
 
     grouped: dict[str, list[Mapping[str, Any]]] = {category: [] for category in CATEGORY_ORDER}
     other: list[Mapping[str, Any]] = []
@@ -152,7 +154,14 @@ def run(args: argparse.Namespace) -> int:
         # No short-circuit: all entries are checked even after an error.
         for device in category_devices:
             if not process_device(
-                device, state, width, changes=changes, errors=errors, quiet=args.quiet
+                device,
+                state,
+                width,
+                changes=changes,
+                errors=errors,
+                outdated=outdated,
+                cache=cache,
+                quiet=args.quiet,
             ):
                 failed = True
 
@@ -163,7 +172,14 @@ def run(args: argparse.Namespace) -> int:
         # No short-circuit: all entries are checked even after an error.
         for device in other:
             if not process_device(
-                device, state, width, changes=changes, errors=errors, quiet=args.quiet
+                device,
+                state,
+                width,
+                changes=changes,
+                errors=errors,
+                outdated=outdated,
+                cache=cache,
+                quiet=args.quiet,
             ):
                 failed = True
 
@@ -175,7 +191,7 @@ def run(args: argparse.Namespace) -> int:
         return 1
 
     if changes or errors:
-        subject, body = build_notification(changes, errors)
+        subject, body = build_notification(changes, errors, outdated)
         send_notification(args, subject, body)
     return int(failed)
 

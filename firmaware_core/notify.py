@@ -95,8 +95,14 @@ def send_email(config: Mapping[str, Any], subject: str, body: str) -> None:
 def build_notification(
     changes: Sequence[Mapping[str, Any]],
     errors: Sequence[Mapping[str, Any]],
+    outdated: Sequence[Mapping[str, Any]] = (),
 ) -> tuple[str, str]:
-    """Compose subject and plain-text body for discovered versions or warnings."""
+    """Compose subject and plain-text body for discovered versions or warnings.
+
+    ``outdated`` lists entries whose installed version is behind the latest known
+    one. It is only reported together with new versions or warnings; it never
+    triggers a notification by itself.
+    """
     new_count = sum(len(change.get("versions") or ()) for change in changes)
     error_count = len(errors)
 
@@ -109,6 +115,8 @@ def build_notification(
         parts.append("1 warning")
     elif error_count > 1:
         parts.append(f"{error_count} warnings")
+    if outdated:
+        parts.append(f"{len(outdated)} outdated")
     if not parts:
         parts.append("no changes")
     subject = "firmAware: " + ", ".join(parts)
@@ -127,6 +135,15 @@ def build_notification(
             lines.append(f"  {change['name']}")
             for version in change.get("versions") or ():
                 lines.append(f"    new: {version}")
+            if change.get("installed"):
+                lines.append(f"    installed: {change['installed']}")
+    if outdated:
+        if lines:
+            lines.append("")
+        lines.append("Outdated devices")
+        lines.append("-" * 16)
+        for item in outdated:
+            lines.append(f"  {item['name']}: installed {item['installed']}, latest {item['latest']}")
     if errors:
         if lines:
             lines.append("")

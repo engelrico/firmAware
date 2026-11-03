@@ -8,7 +8,14 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from .checking import check_device, display_name, record_check, version_sort_key
+from .checking import (
+    STATE_NOT_SET,
+    check_device,
+    display_name,
+    installed_status,
+    record_check,
+    version_sort_key,
+)
 from .constants import CATEGORY_DISPLAY_NAMES, PROFILE_ID_PATTERN
 from .profiles import resolve_device, resolve_devices
 from .report import format_timestamp
@@ -89,6 +96,8 @@ def print_entry_actions(
         "Move up",
         "Move down",
         "Edit name",
+        "Set installed version",
+        "Mark as updated to latest",
         "Duplicate entry",
         "Delete entry",
         toggle_label,
@@ -105,6 +114,9 @@ def print_entry_actions(
     print(f"  Status:     {status_label}")
     print(f"  Last check: {format_timestamp(entry_state.get('last_checked'))}")
     print(f"  Version:    {latest}")
+    status = installed_status(device, discovered)
+    if status.state != STATE_NOT_SET:
+        print(f"  Installed:  {status.installed} ({status.state})")
     print(f"  First seen: {first_seen}")
     print(f"  Known:      {len(discovered)} version(s)")
     print(f"  Position:   {index + 1} of {total}")
@@ -169,6 +181,39 @@ def edit_entry_name(raw: list[Any], index: int, resolved_name: str = "") -> None
         del entry["name"]
 
 
+def set_installed_version(entry: dict[str, Any], value: str) -> None:
+    """Set the installed version of an entry; an empty value clears it."""
+    value = value.strip()
+    if value:
+        entry["installed_version"] = value
+    else:
+        entry.pop("installed_version", None)
+
+
+def mark_installed_latest(entry: dict[str, Any], discovered: Mapping[str, Any] | None) -> str | None:
+    """Set the installed version to the highest known version; return it, or None."""
+    if not discovered:
+        return None
+    latest = max(discovered, key=version_sort_key)
+    entry["installed_version"] = latest
+    return latest
+
+
+def prompt_installed_version(entry: dict[str, Any]) -> None:
+    """Prompt for the installed version; the current value is pre-filled for editing."""
+    import readline
+
+    current = entry.get("installed_version") or ""
+    print(f"  Installed version: {current or '(not set)'}")
+    print("  (Edit the text and press Enter; leave empty to clear)")
+    try:
+        readline.set_startup_hook(lambda: readline.insert_text(current))
+        new_value = input("  Installed: ")
+    finally:
+        readline.set_startup_hook()
+    set_installed_version(entry, new_value)
+
+
 def duplicate_entry(raw: list[Any], index: int, existing_ids: set[str]) -> None:
     """Duplicate an entry; the user supplies a new unique ID."""
     original = raw[index]
@@ -186,6 +231,8 @@ def duplicate_entry(raw: list[Any], index: int, existing_ids: set[str]) -> None:
 
     clone = _copy.deepcopy(original)
     clone["id"] = new_id
+    # A copy is usually another physical device; its installed version is unknown.
+    clone.pop("installed_version", None)
     raw.append(clone)
     existing_ids.add(new_id)
     print(f"  Duplicated as '{new_id}' (added at end of list).")
@@ -408,7 +455,7 @@ def run_interactive(devices_path: Path, profiles_dir: Path, state_path: Path) ->
                 # Open actions submenu with arrow-key navigation.
                 entry = raw_entries[selected]
                 action_selected = 0
-                max_action = 8  # last action: Back to list
+                max_action = 10  # last action: Back to list
 
                 while True:
                     # Re-resolve the entry to reflect any changes.
@@ -462,10 +509,26 @@ def run_interactive(devices_path: Path, profiles_dir: Path, state_path: Path) ->
                             edit_entry_name(raw_entries, selected, resolved_name)
                             dirty = True
                             print("  Name updated.")
-                        elif action_selected == 5:  # Duplicate
+                        elif action_selected == 5:  # Set installed version
+                            prompt_installed_version(raw_entries[selected])
+                            dirty = True
+                            print("  Installed version updated.")
+                        elif action_selected == 6:  # Mark as updated to latest
+                            discovered = (
+                                device_state.get("devices", {})
+                                .get(display_entry["id"], {})
+                                .get("discovered_at")
+                            )
+                            latest = mark_installed_latest(raw_entries[selected], discovered)
+                            if latest is None:
+                                print("  No known versions yet; run a check first.")
+                            else:
+                                dirty = True
+                                print(f"  Installed version set to {latest}.")
+                        elif action_selected == 7:  # Duplicate
                             duplicate_entry(raw_entries, selected, existing_ids)
                             dirty = True
-                        elif action_selected == 6:  # Delete
+                        elif action_selected == 8:  # Delete
                             before = len(raw_entries)
                             delete_entry(raw_entries, selected, existing_ids)
                             if len(raw_entries) < before:
@@ -474,10 +537,10 @@ def run_interactive(devices_path: Path, profiles_dir: Path, state_path: Path) ->
                                     selected -= 1
                                 if not raw_entries:
                                     break
-                        elif action_selected == 7:  # Toggle enabled
+                        elif action_selected == 9:  # Toggle enabled
                             toggle_entry(raw_entries, selected)
                             dirty = True
-                        elif action_selected == 8:  # Back to list
+                        elif action_selected == 10:  # Back to list
                             break
                     else:
                         pass

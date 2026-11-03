@@ -17,6 +17,7 @@ from unittest import mock
 import firmaware as fw
 from firmaware_core import checking as fw_checking
 from firmaware_core import extract as fw_extract
+from firmaware_core import interactive as fw_interactive
 from firmaware_core import sources as fw_sources
 
 
@@ -1333,6 +1334,209 @@ class CheckResultTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertEqual(state, {"devices": {}})
         self.assertEqual(errors, [{"name": "X", "error": "boom"}])
+
+
+class InstalledVersionTests(unittest.TestCase):
+    """The user-maintained installed version per entry and its comparison."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = Path(self._tmp.name)
+        self.devices_path = self.root / "devices.json"
+        self.state_path = self.root / "state.json"
+        self.profiles_dir = self.root / "profiles"
+        self.profiles_dir.mkdir()
+        self.notify_path = self.root / "notify.json"
+        self.notify_path.write_text(
+            json.dumps(
+                {
+                    "smtp_host": "smtp.example.com",
+                    "smtp_user": "me@example.com",
+                    "smtp_password": "secret",
+                    "mail_to": ["me@example.com"],
+                }
+            ),
+            encoding="utf-8",
+        )
+        self.smtp = mock.MagicMock()
+        self.smtp.__enter__ = mock.MagicMock(return_value=self.smtp)
+        self.smtp.__exit__ = mock.MagicMock(return_value=False)
+        smtp_patch = mock.patch.object(smtplib, "SMTP", return_value=self.smtp)
+        smtp_patch.start()
+        self.addCleanup(smtp_patch.stop)
+
+    def entry(self, entry_id, installed=None, url="https://example.com/u1"):
+        entry = {
+            "id": entry_id,
+            "name": entry_id.title(),
+            "category": "firmware",
+            "source_type": "text",
+            "source_url": url,
+            "version_pattern": r"v[0-9]+",
+        }
+        if installed is not None:
+            entry["installed_version"] = installed
+        return entry
+
+    def run_cli(self, content, extra=None):
+        fetched = []
+
+        def fake_fetch(device):
+            fetched.append(device["source_url"])
+            return content
+
+        args = [
+            "--devices", str(self.devices_path),
+            "--state", str(self.state_path),
+            "--profiles-dir", str(self.profiles_dir),
+            "--notify-config", str(self.notify_path),
+        ] + (extra or [])
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.object(fw_extract, "fetch_source", fake_fetch):
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                code = fw.main(args)
+        self.assertEqual(code, 0, err.getvalue())
+        return out.getvalue(), fetched
+
+    def write_devices(self, *entries):
+        self.devices_path.write_text(json.dumps({"devices": list(entries)}), encoding="utf-8")
+
+    # --- validation ---
+
+    def test_direct_entry_accepts_installed_version(self):
+        resolved = fw.resolve_device(self.entry("a", " v1 "), self.profiles_dir)
+        self.assertEqual(resolved["installed_version"], "v1")
+
+    def test_invalid_installed_version_rejected(self):
+        for value in ("", "  ", 5, None, ["v1"]):
+            with self.subTest(value=value):
+                entry = {**self.entry("a"), "installed_version": value}
+                with self.assertRaisesRegex(ValueError, "installed_version"):
+                    fw.resolve_device(entry, self.profiles_dir)
+
+    def test_profile_based_entry_accepts_installed_version(self):
+        profile = {
+            "schema_version": 2, "id": "x.y", "name": "X", "category": "firmware",
+            "source_type": "text", "source_url": "https://example.com/u1",
+            "version_pattern": r"v[0-9]+",
+        }
+        (self.profiles_dir / "x.y.json").write_text(json.dumps(profile), encoding="utf-8")
+        resolved = fw.resolve_device(
+            {"id": "one", "profile": "x.y", "installed_version": "v3"}, self.profiles_dir
+        )
+        self.assertEqual(resolved["installed_version"], "v3")
+        with self.assertRaisesRegex(ValueError, "installed_version"):
+            fw.resolve_device(
+                {"id": "one", "profile": "x.y", "installed_version": ""}, self.profiles_dir
+            )
+
+    def test_profile_must_not_contain_installed_version(self):
+        profile = {
+            "schema_version": 2, "id": "x.y", "name": "X", "category": "firmware",
+            "source_type": "text", "source_url": "https://example.com/u1",
+            "version_pattern": r"v[0-9]+", "installed_version": "v1",
+        }
+        with self.assertRaisesRegex(ValueError, "belongs to an entry"):
+            fw.validate_profile(profile, "x.y", "ctx")
+
+    # --- comparison ---
+
+    def test_installed_status(self):
+        discovered = {"1.9": "t", "1.10": "t"}
+        status = fw_checking.installed_status
+        self.assertEqual(status({}, discovered).state, "not set")
+        self.assertEqual(status({"installed_version": "1.9"}, None).state, "unknown")
+        self.assertEqual(status({"installed_version": "1.9"}, discovered).state, "outdated")
+        self.assertEqual(status({"installed_version": "1.10"}, discovered).state, "current")
+        self.assertEqual(status({"installed_version": "1.11"}, discovered).state, "current")
+        legacy = {"1978074000": "t", "6.1.1978418030": "t"}
+        self.assertEqual(
+            status({"installed_version": "1978074000"}, legacy).state, "outdated"
+        )
+        result = status({"installed_version": "1.9"}, discovered)
+        self.assertEqual((result.installed, result.latest), ("1.9", "1.10"))
+
+    # --- check output, status, notification ---
+
+    def test_two_devices_of_one_type_fetch_once_and_show_state(self):
+        self.write_devices(self.entry("old", "v1"), self.entry("new", "v2"))
+        self.run_cli("v1 v2")  # baseline
+        out, fetched = self.run_cli("v1 v2")
+        self.assertEqual(len(fetched), 1)
+        old_line = next(line for line in out.splitlines() if line.startswith("Old"))
+        new_line = next(line for line in out.splitlines() if line.startswith("New"))
+        self.assertIn("outdated: installed v1, latest v2", old_line)
+        self.assertNotIn("outdated", new_line)
+
+    def test_quiet_suppresses_outdated_line(self):
+        self.write_devices(self.entry("old", "v1"))
+        self.run_cli("v1 v2")
+        out, _ = self.run_cli("v1 v2", extra=["--quiet"])
+        self.assertEqual(out, "")
+
+    def test_status_shows_installed_and_state(self):
+        self.write_devices(self.entry("old", "v1"), self.entry("new", "v2"), self.entry("none"))
+        self.run_cli("v1 v2")
+        out, _ = self.run_cli("v1 v2", extra=["--status"])
+        header = next(line for line in out.splitlines() if line.startswith("ID"))
+        self.assertIn("Installed", header)
+        self.assertIn("State", header)
+        rows = {line.split()[0]: line for line in out.splitlines() if line.split()[:1] in (["old"], ["new"], ["none"])}
+        self.assertIn("outdated", rows["old"])
+        self.assertIn("current", rows["new"])
+        self.assertNotIn("outdated", rows["none"])
+        self.assertNotIn("current", rows["none"])
+
+    def test_mail_lists_outdated_devices_with_new_version(self):
+        self.write_devices(self.entry("old", "v1"), self.entry("new", "v2"))
+        self.run_cli("v1")  # baseline
+        self.run_cli("v1 v2", extra=["--notify"])
+        self.smtp.send_message.assert_called_once()
+        message = self.smtp.send_message.call_args[0][0]
+        self.assertEqual(message["Subject"], "firmAware: 2 new versions found, 1 outdated")
+        body = message.get_content()
+        self.assertIn("Outdated devices", body)
+        self.assertIn("Old: installed v1, latest v2", body)
+        self.assertIn("installed: v1", body)
+
+    def test_outdated_alone_sends_no_mail(self):
+        self.write_devices(self.entry("old", "v1"))
+        self.run_cli("v1 v2")  # baseline
+        self.run_cli("v1 v2", extra=["--notify"])
+        self.smtp.send_message.assert_not_called()
+
+    def test_build_notification_without_outdated_is_unchanged(self):
+        changes = [{"name": "X", "category": "firmware", "versions": ["1"]}]
+        subject, body = fw.build_notification(changes, [])
+        self.assertEqual(subject, "firmAware: 1 new version found")
+        self.assertNotIn("Outdated", body)
+
+    # --- interactive helpers ---
+
+    def test_set_and_clear_installed_version(self):
+        entry = {"id": "a"}
+        fw_interactive.set_installed_version(entry, "  v3 ")
+        self.assertEqual(entry["installed_version"], "v3")
+        fw_interactive.set_installed_version(entry, "  ")
+        self.assertNotIn("installed_version", entry)
+
+    def test_mark_installed_latest(self):
+        entry = {"id": "a"}
+        self.assertIsNone(fw_interactive.mark_installed_latest(entry, {}))
+        self.assertNotIn("installed_version", entry)
+        latest = fw_interactive.mark_installed_latest(entry, {"1.9": "t", "1.10": "t"})
+        self.assertEqual(latest, "1.10")
+        self.assertEqual(entry["installed_version"], "1.10")
+
+    def test_duplicate_does_not_copy_installed_version(self):
+        raw = [self.entry("a", "v1")]
+        with mock.patch.object(fw_interactive, "prompt_nonempty", return_value="b"):
+            with contextlib.redirect_stdout(io.StringIO()):
+                fw_interactive.duplicate_entry(raw, 0, {"a"})
+        self.assertEqual(raw[1]["id"], "b")
+        self.assertNotIn("installed_version", raw[1])
+        self.assertEqual(raw[0]["installed_version"], "v1")
 
 
 class DocumentationConsistencyTests(unittest.TestCase):

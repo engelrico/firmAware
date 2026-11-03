@@ -14,7 +14,7 @@ CONTEXT_CHARS = 150
 MAX_EXAMPLE_LENGTH = 100
 PROFILE_SCHEMA_VERSION = 2
 PROFILE_ID_PATTERN = re.compile(r"[a-z0-9][a-z0-9._-]*")
-PROFILE_ENTRY_FIELDS = frozenset({"id", "profile", "name", "enabled"})
+PROFILE_ENTRY_FIELDS = frozenset({"id", "profile", "name", "enabled", "installed_version"})
 PROFILE_CATEGORIES = frozenset({"firmware", "software", "operating_system"})
 CATEGORY_DISPLAY_NAMES = {
     "firmware": "Firmware",
