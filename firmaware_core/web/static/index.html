@@ -18,12 +18,22 @@
         <button type="button" data-filter="outdated" aria-pressed="false">Outdated</button>
         <button type="button" data-filter="disabled" aria-pressed="false">Disabled</button>
       </div>
+      <button type="button" id="check-all" class="btn primary" data-check>Check all</button>
     </div>
   </header>
 
   <main>
     <p id="summary" class="summary" aria-live="polite"></p>
     <div id="message" class="message" role="status" hidden></div>
+    <section id="checks" class="card checks" aria-labelledby="checks-title" hidden>
+      <div class="checks-head">
+        <strong id="checks-title">Check</strong>
+        <span id="checks-status" class="muted" aria-live="polite"></span>
+        <button type="button" id="checks-close" class="icon-btn" aria-label="Hide check results">&times;</button>
+      </div>
+      <div class="progress" aria-hidden="true"><div id="checks-bar"></div></div>
+      <div id="checks-lines" class="lines mono"></div>
+    </section>
     <div id="groups"></div>
   </main>
 
@@ -35,6 +45,8 @@
     </div>
     <div id="panel-body" class="panel-body"></div>
   </aside>
+
+  <div id="toasts" class="toasts" role="status" aria-live="polite"></div>
 
   <script type="module" src="/app.js"></script>
 </body>

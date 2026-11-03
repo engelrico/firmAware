@@ -270,11 +270,13 @@ class Workspace:
         self,
         ids: Sequence[str] | None = None,
         progress: Callable[[int, int, dict[str, Any]], None] | None = None,
+        started: Callable[[int], None] | None = None,
     ) -> list[dict[str, Any]]:
         """Check entries (all enabled ones, or the given IDs) and save what was found.
 
         Returns one result per selected entry: ``status`` is ``ok``, ``error``, or
         ``disabled``; ``summary`` is the text the command line prints. No mail is sent.
+        ``started`` receives the number of selected entries before the first check.
         """
         raw = self._raw_entries()
         known = {entry.get("id") for entry in raw}
@@ -283,6 +285,8 @@ class Workspace:
             if missing:
                 raise NotFoundError(f"No entry with ID '{missing[0]}'")
         selected = [entry for entry in raw if ids is None or entry.get("id") in ids]
+        if started is not None:
+            started(len(selected))
 
         state = load_state(self.state_path)
         cache: dict[tuple[str, str | None], str] = {}

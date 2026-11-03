@@ -8,6 +8,7 @@ import io
 import json
 import re
 import shutil
+import subprocess
 import smtplib
 import sys
 import tempfile
@@ -1634,8 +1635,8 @@ class WebServerTests(unittest.TestCase):
         response, _ = self.request(server, "POST", "/api/entries", headers=headers, body=b"{}")
         self.assertEqual(response.status, 403)
         headers = {"X-Requested-With": "firmaware"}
-        response, _ = self.request(server, "POST", "/api/entries", headers=headers, body=b"{}")
-        self.assertEqual(response.status, 405)  # allowed through, but no such write route yet
+        response, _ = self.request(server, "POST", "/api/profiles", headers=headers, body=b"{}")
+        self.assertEqual(response.status, 405)  # allowed through, but not a route for POST
 
     def test_token_is_required_when_configured(self):
         server = self.start(self.TOKEN)
@@ -1683,6 +1684,120 @@ class WebServerTests(unittest.TestCase):
             self.assertTrue(fw_web.is_loopback(host), host)
         for host in ("0.0.0.0", "192.168.1.5", "example.com", "::"):
             self.assertFalse(fw_web.is_loopback(host), host)
+
+    # --- changing entries ------------------------------------------------
+
+    PAGE = {"X-Requested-With": "firmaware", "Content-Type": "application/json"}
+
+    def send(self, server, method, path, payload=None, headers=None):
+        body = None if payload is None else json.dumps(payload).encode("utf-8")
+        response, data = self.request(server, method, path, {**self.PAGE, **(headers or {})}, body)
+        return response.status, json.loads(data) if data else None
+
+    def test_update_entry(self):
+        server = self.start()
+        status, entry = self.send(
+            server, "PATCH", "/api/entries/a", {"name": "Renamed", "installed_version": "v1", "enabled": False}
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual((entry["name"], entry["installed_version"], entry["enabled"]), ("Renamed", "v1", False))
+        status, error = self.send(server, "PATCH", "/api/entries/a", {"enabled": "yes"})
+        self.assertEqual(status, 400)
+        self.assertIn("enabled", error["error"])
+        self.assertEqual(self.send(server, "PATCH", "/api/entries/nope", {"name": "x"})[0], 404)
+        self.assertEqual(self.send(server, "PATCH", "/api/entries/a", ["x"])[0], 400)
+
+    def test_add_duplicate_order_and_delete(self):
+        server = self.start()
+        status, entry = self.send(server, "POST", "/api/entries", {"profile": "t.one", "id": "b", "name": "Beta"})
+        self.assertEqual((status, entry["id"], entry["name"]), (201, "b", "Beta"))
+        self.assertEqual(self.send(server, "POST", "/api/entries", {"profile": "t.one", "id": "b"})[0], 409)
+        self.assertEqual(self.send(server, "POST", "/api/entries", {"profile": "t.one", "id": "B!"})[0], 400)
+        self.assertEqual(self.send(server, "POST", "/api/entries", {"profile": "none", "id": "c"})[0], 400)
+        self.assertEqual(self.send(server, "POST", "/api/entries", {})[0], 400)
+        status, copy_ = self.send(server, "POST", "/api/entries/a/duplicate", {"id": "a2"})
+        self.assertEqual((status, copy_["id"]), (201, "a2"))
+        status, data = self.send(server, "PUT", "/api/order", {"ids": ["b", "a2", "a"]})
+        self.assertEqual([e["id"] for e in data["entries"]], ["b", "a2", "a"])
+        self.assertEqual(self.send(server, "PUT", "/api/order", {"ids": ["a"]})[0], 400)
+        self.assertEqual(self.send(server, "DELETE", "/api/entries/a2")[0], 200)
+        self.assertEqual(self.send(server, "DELETE", "/api/entries/a2")[0], 404)
+
+    def test_installed_latest_needs_known_versions(self):
+        server = self.start()
+        self.assertEqual(self.send(server, "POST", "/api/entries/a/installed-latest")[0], 409)
+        self.run_check(server)
+        status, entry = self.send(server, "POST", "/api/entries/a/installed-latest")
+        self.assertEqual((status, entry["installed_version"], entry["installed_state"]), (200, "v2", "current"))
+
+    def test_bad_bodies_are_rejected(self):
+        server = self.start()
+        status, _ = self.send(server, "PATCH", "/api/entries/a", headers={"Content-Type": "text/plain"}, payload={"name": "x"})
+        self.assertEqual(status, 400)
+        response, _ = self.request(server, "PATCH", "/api/entries/a", self.PAGE, b"{not json")
+        self.assertEqual(response.status, 400)
+        response, _ = self.request(server, "PATCH", "/api/entries/a", self.PAGE, b"x" * (64 * 1024 + 1))
+        self.assertEqual(response.status, 413)
+
+    # --- check jobs ------------------------------------------------------
+
+    def run_check(self, server, ids=None, content="v1 v2"):
+        with mock.patch.object(fw_extract, "fetch_source", return_value=content):
+            status, data = self.send(server, "POST", "/api/checks", {} if ids is None else {"ids": ids})
+            self.assertEqual(status, 202)
+            return self.wait_for_job(server, data["job"]["id"])
+
+    def wait_for_job(self, server, job_id):
+        for _ in range(200):
+            _, data = self.get_json(server, f"/api/checks/{job_id}")
+            if data["job"]["status"] != "running":
+                return data["job"]
+            threading.Event().wait(0.02)
+        self.fail("check job did not finish")
+
+    def test_check_job_runs_and_updates_state(self):
+        server = self.start()
+        self.assertEqual(self.get_json(server, "/api/checks")[1], {"job": None})
+        job = self.run_check(server)
+        self.assertEqual((job["status"], job["done"], job["total"]), ("done", 1, 1))
+        self.assertTrue(job["results"][0]["summary"].startswith("Baseline (2): v1, v2"))
+        self.assertEqual(self.get_json(server, "/api/checks")[1]["job"]["id"], job["id"])
+        _, entry = self.get_json(server, "/api/entries/a")
+        self.assertEqual(entry["latest_version"], "v2")
+        self.assertIsNotNone(entry["last_checked"])
+
+    def test_check_job_for_selected_entry_and_unknown_id(self):
+        server = self.start()
+        self.assertEqual(self.send(server, "POST", "/api/checks", {"ids": ["nope"]})[0], 404)
+        self.assertEqual(self.send(server, "POST", "/api/checks", {"ids": "a"})[0], 400)
+        self.assertEqual(self.get_json(server, "/api/checks/999")[0], 404)
+        job = self.run_check(server, ["a"])
+        self.assertEqual([r["id"] for r in job["results"]], ["a"])
+
+    def test_only_one_check_runs_at_a_time(self):
+        server = self.start()
+        gate = threading.Event()
+
+        def slow_fetch(device):
+            gate.wait(5)
+            return "v1"
+
+        with mock.patch.object(fw_extract, "fetch_source", slow_fetch):
+            status, data = self.send(server, "POST", "/api/checks", {})
+            self.assertEqual(status, 202)
+            self.assertEqual(self.send(server, "POST", "/api/checks", {})[0], 409)
+            gate.set()
+            self.assertEqual(self.wait_for_job(server, data["job"]["id"])["status"], "done")
+        job = self.run_check(server)  # a new job can start once the first one ended
+        self.assertEqual(job["status"], "done")
+
+    def test_check_job_reports_entry_errors(self):
+        server = self.start()
+        with mock.patch.object(fw_extract, "fetch_source", side_effect=ValueError("boom")):
+            _, data = self.send(server, "POST", "/api/checks", {})
+            job = self.wait_for_job(server, data["job"]["id"])
+        self.assertEqual(job["status"], "done")
+        self.assertEqual((job["results"][0]["status"], job["results"][0]["summary"]), ("error", "Check error: boom"))
 
     # --- command line ----------------------------------------------------
 
@@ -1974,6 +2089,33 @@ class InstalledVersionTests(unittest.TestCase):
         self.assertEqual(raw[1]["id"], "b")
         self.assertNotIn("installed_version", raw[1])
         self.assertEqual(raw[0]["installed_version"], "v1")
+
+
+class WebFrontendLogicTests(unittest.TestCase):
+    """The pure JavaScript helpers, checked with Node.js when it is installed."""
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is not installed")
+    def test_ordering_helpers(self):
+        script = Path(__file__).resolve().parent / "web_order_test.mjs"
+        result = subprocess.run(
+            ["node", str(script)], capture_output=True, text=True, timeout=30, check=False
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is not installed")
+    def test_scripts_parse(self):
+        static = Path(fw_web.__file__).resolve().parent / "static"
+        for script in sorted(static.glob("*.js")):
+            with self.subTest(script=script.name):
+                result = subprocess.run(
+                    ["node", "--check", "--input-type=module"],
+                    input=script.read_text(encoding="utf-8"),
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    check=False,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
 
 
 class DocumentationConsistencyTests(unittest.TestCase):

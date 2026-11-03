@@ -111,7 +111,7 @@ tr.off td { opacity: 0.6; }
   position: fixed; top: 0; right: 0; bottom: 0; z-index: 11; width: min(460px, 100vw);
   display: flex; flex-direction: column; background: var(--surface); border-left: 1px solid var(--line); box-shadow: var(--shadow);
 }
-.panel[hidden], .scrim[hidden], .message[hidden] { display: none; }
+.panel[hidden], .scrim[hidden], .message[hidden], .checks[hidden] { display: none; }
 .panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--line); }
 .panel-head h2 { font-size: 18px; }
 .icon-btn { border: 0; background: none; font-size: 26px; line-height: 1; cursor: pointer; color: var(--muted); padding: 0 4px; }
@@ -130,6 +130,57 @@ ul.timeline li::before {
 ul.timeline li.newest::before { background: var(--accent); }
 ul.timeline .when { display: block; font-size: 12px; color: var(--muted); }
 
+/* buttons and forms */
+.btn {
+  border: 1px solid var(--line); background: var(--surface); color: var(--text);
+  padding: 7px 14px; border-radius: 8px; cursor: pointer; white-space: nowrap;
+}
+.btn:hover:not(:disabled) { border-color: var(--accent); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+.btn.danger { color: var(--bad-text); border-color: color-mix(in srgb, var(--bad-text) 40%, var(--line)); }
+.btn.danger:hover:not(:disabled) { background: var(--bad-bg); border-color: var(--bad-text); }
+.actions { margin: 0 0 8px; }
+.edit { margin-bottom: 6px; }
+.edit h3, .panel-body > h3 { margin-top: 22px; }
+.field { margin: 0 0 12px; }
+.field label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.field input[type="text"] {
+  flex: 1 1 160px; min-width: 0; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg);
+}
+.field input:invalid { border-color: var(--bad-text); }
+.switch { display: flex; gap: 10px; align-items: center; margin: 4px 0 14px; cursor: pointer; }
+.switch input { width: 18px; height: 18px; accent-color: var(--accent); }
+
+/* check results */
+.checks { margin-bottom: 18px; }
+.checks-head { display: flex; align-items: baseline; gap: 12px; padding: 12px 14px 8px; }
+.checks-head .muted { flex: 1; }
+.progress { height: 4px; background: var(--neutral-bg); }
+.progress div { height: 100%; width: 0; background: var(--accent); transition: width 0.25s ease; }
+.checks.failed .progress div { background: var(--bad-text); }
+.lines { padding: 8px 14px 12px; font-size: 13px; max-height: 320px; overflow: auto; }
+.line { display: flex; gap: 14px; padding: 2px 0; flex-wrap: wrap; }
+.line span { white-space: pre-wrap; }
+.line-name { min-width: 14em; color: var(--muted); }
+.line.new { color: var(--ok-text); font-weight: 600; }
+.line.error { color: var(--bad-text); }
+.line.off { color: var(--muted); }
+
+/* reordering */
+tr[draggable="true"] { cursor: grab; }
+tr.dragging { opacity: 0.4; }
+tr.drop-target td { box-shadow: inset 0 2px 0 var(--accent); }
+
+/* toasts */
+.toasts { pointer-events: none; position: fixed; left: 50%; bottom: 18px; z-index: 20; transform: translateX(-50%); display: grid; gap: 8px; width: min(420px, calc(100vw - 24px)); }
+.toast {
+  padding: 10px 14px; border-radius: var(--radius); background: var(--text); color: var(--bg);
+  box-shadow: var(--shadow); font-size: 14px;
+}
+.toast.error { background: var(--bad-text); color: var(--surface); }
+
 @media (max-width: 760px) {
   main { padding: 12px; }
   .tools { width: 100%; }
@@ -143,6 +194,7 @@ ul.timeline .when { display: block; font-size: 12px; color: var(--muted); }
   td::before { content: attr(data-label); color: var(--muted); flex: none; font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
   td.cell-name { font-size: 16px; }
   td.cell-name::before, td.cell-id::before { content: none; }
+  .line-name { min-width: 0; width: 100%; }
   tbody tr:hover td { background: none; }
 }
 @media (prefers-reduced-motion: no-preference) {

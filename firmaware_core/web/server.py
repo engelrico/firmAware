@@ -23,14 +23,28 @@ from urllib.parse import parse_qs, unquote, urlsplit
 
 from ..service import NotFoundError, ServiceError, Workspace
 from ..state import read_json
+from .jobs import CheckJobs
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
-STATIC_FILES = {
-    "/": ("index.html", "text/html; charset=utf-8"),
-    "/app.js": ("app.js", "text/javascript; charset=utf-8"),
-    "/style.css": ("style.css", "text/css; charset=utf-8"),
-    "/favicon.svg": ("favicon.svg", "image/svg+xml"),
+CONTENT_TYPES = {
+    ".html": "text/html; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".svg": "image/svg+xml",
 }
+
+
+def static_files() -> dict[str, tuple[str, str]]:
+    """The files of the flat static directory by URL path; nothing else is ever served."""
+    files = {}
+    for path in sorted(STATIC_DIR.iterdir()):
+        content_type = CONTENT_TYPES.get(path.suffix)
+        if path.is_file() and content_type:
+            files["/" if path.name == "index.html" else f"/{path.name}"] = (path.name, content_type)
+    return files
+
+
+STATIC_FILES = static_files()
 COOKIE_NAME = "firmaware_token"
 REQUEST_HEADER = "X-Requested-With"
 REQUEST_HEADER_VALUE = "firmaware"
@@ -86,6 +100,7 @@ class WebServer(ThreadingHTTPServer):
         if not is_loopback(host) and not token:
             raise ValueError("A token is required when the server is reachable from the network")
         self.workspace = workspace
+        self.jobs = CheckJobs(workspace)
         self.token = token
         self.loopback = is_loopback(host)
         self.address_family = socket.AF_INET6 if ":" in host else socket.AF_INET
@@ -279,22 +294,75 @@ class Handler(BaseHTTPRequestHandler):
         status = HTTPStatus.METHOD_NOT_ALLOWED if known_path else HTTPStatus.NOT_FOUND
         self._error(status, "Method not allowed" if known_path else "Not found")
 
+    def _body(self) -> dict[str, Any]:
+        """The JSON request body, which must be an object."""
+        data = self._read_json_body()
+        if not isinstance(data, dict):
+            raise ServiceError("Request body must be a JSON object")
+        return data
+
     def _routes(self) -> list[tuple[str, re.Pattern[str], Callable[..., None]]]:
         workspace = self.server.workspace
+        jobs = self.server.jobs
+        ok = HTTPStatus.OK
 
         def entries() -> None:
-            self._json(HTTPStatus.OK, {"entries": workspace.entries()})
+            self._json(ok, {"entries": workspace.entries()})
 
         def entry(entry_id: str) -> None:
-            self._json(HTTPStatus.OK, workspace.entry(entry_id))
+            self._json(ok, workspace.entry(entry_id))
 
         def profiles() -> None:
-            self._json(HTTPStatus.OK, {"profiles": workspace.profiles()})
+            self._json(ok, {"profiles": workspace.profiles()})
+
+        def update(entry_id: str) -> None:
+            workspace.update_entry(entry_id, self._body())
+            self._json(ok, workspace.entry(entry_id))
+
+        def installed_latest(entry_id: str) -> None:
+            workspace.mark_installed_latest(entry_id)
+            self._json(ok, workspace.entry(entry_id))
+
+        def add() -> None:
+            body = self._body()
+            workspace.add_entry(body.get("profile"), body.get("id"), body.get("name"))
+            self._json(HTTPStatus.CREATED, workspace.entry(body["id"]))
+
+        def duplicate(entry_id: str) -> None:
+            new_id = self._body().get("id")
+            workspace.duplicate_entry(entry_id, new_id)
+            self._json(HTTPStatus.CREATED, workspace.entry(new_id))
+
+        def delete(entry_id: str) -> None:
+            workspace.delete_entry(entry_id)
+            self._json(ok, {"ok": True})
+
+        def order() -> None:
+            workspace.reorder(self._body().get("ids"))
+            self._json(ok, {"entries": workspace.entries()})
+
+        def start_check() -> None:
+            self._json(HTTPStatus.ACCEPTED, {"job": jobs.start(self._body().get("ids"))})
+
+        def latest_check() -> None:
+            self._json(ok, {"job": jobs.latest()})
+
+        def check(job_id: str) -> None:
+            self._json(ok, {"job": jobs.get(job_id)})
 
         return [
             ("GET", re.compile(r"/api/entries"), entries),
+            ("POST", re.compile(r"/api/entries"), add),
+            ("PUT", re.compile(r"/api/order"), order),
             ("GET", re.compile(rf"/api/entries/{ENTRY_ID}"), entry),
+            ("PATCH", re.compile(rf"/api/entries/{ENTRY_ID}"), update),
+            ("DELETE", re.compile(rf"/api/entries/{ENTRY_ID}"), delete),
+            ("POST", re.compile(rf"/api/entries/{ENTRY_ID}/installed-latest"), installed_latest),
+            ("POST", re.compile(rf"/api/entries/{ENTRY_ID}/duplicate"), duplicate),
             ("GET", re.compile(r"/api/profiles"), profiles),
+            ("POST", re.compile(r"/api/checks"), start_check),
+            ("GET", re.compile(r"/api/checks"), latest_check),
+            ("GET", re.compile(rf"/api/checks/{ENTRY_ID}"), check),
         ]
 
 

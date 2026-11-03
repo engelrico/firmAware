@@ -678,7 +678,10 @@ Notification does not change the exit-code semantics: `0` for a successful run
 `python3 firmaware.py --serve [--host ADDRESS] [--port PORT] [--web-config PATH]` runs a foreground HTTP server (standard library `http.server`, threaded) with a JSON API and a static single-page frontend (`firmaware_core/web/`). It uses the same configuration and state files as the command line and the operations of `firmaware_core/service.py` (`Workspace`). `--serve` is mutually exclusive with `--check`, `--status`, and `--interactive`; `--host` and `--port` require `--serve`. Defaults: `127.0.0.1`, port `8765`.
 
 ### Frontend
-Vanilla HTML, CSS, and JavaScript without build step, framework, or external request (`index.html`, `app.js`, `style.css`, `favicon.svg`). The start page is the `--status` table: entries grouped by category with the columns `ID`, `Entry`, `Last check`, `Last version`, `First seen`, `Installed`, `State`, read from the stored state without any network request. Search, a filter (all, outdated, disabled), a details panel with the version history, light and dark theme following the system, and a card layout on narrow screens. Check and editing actions are added in later steps.
+Vanilla HTML, CSS, and JavaScript without build step, framework, or external request (`index.html`, `app.js`, `style.css`, `favicon.svg`). The start page is the `--status` table: entries grouped by category with the columns `ID`, `Entry`, `Last check`, `Last version`, `First seen`, `Installed`, `State`, read from the stored state without any network request. Search, a filter (all, outdated, disabled), light and dark theme following the system, and a card layout on narrow screens.
+
+- **Check** (like `--check`): "Check all" and "Check now" per entry start a background job. A result panel shows the per-entry lines the command line prints (`Baseline (N): ...`, `new: ...`, `no changes`, `outdated: installed X, latest Y`, `Check error: ...`, `[disabled]`) with a progress bar; the table refreshes when the job ends. A reloaded page resumes the latest job. The web check never sends mail; scheduled mail stays with `--check --notify`.
+- **Edit** (like `--interactive`): clicking an entry opens a details panel with the version history and these actions: edit the name (empty restores the profile name), set the installed version, mark it as updated to the latest known version, enable or disable, move up or down within its category, duplicate with a new ID (the copy has no installed version), and delete (two clicks). Rows can also be reordered by drag and drop while no filter or search is active. Entries from invalid configuration stay visible with their error.
 
 ### API (JSON, under `/api`)
 | Request | Result |
@@ -686,6 +689,14 @@ Vanilla HTML, CSS, and JavaScript without build step, framework, or external req
 | `GET /api/entries` | `{"entries": [...]}` with `id`, `name`, `custom_name`, `category`, `kind` (`profile` or `direct`), `profile`, `enabled`, `source_url`, `source_type`, `last_checked`, `latest_version`, `first_seen`, `known_versions`, `installed_version`, `installed_state` (`current`, `outdated`, `unknown`, or `null`), `error` |
 | `GET /api/entries/{id}` | the same fields plus `history` (version, `discovered_at`, `newest`), newest version first |
 | `GET /api/profiles` | `{"profiles": [...]}` with `id`, `name`, `category`, `manufacturer`, `model` of every valid profile |
+| `PATCH /api/entries/{id}` | body with any of `name` (empty removes the local name), `enabled`, `installed_version` (empty clears); returns the entry |
+| `POST /api/entries/{id}/installed-latest` | sets `installed_version` to the highest known version; `409` if none is known yet |
+| `POST /api/entries` | `{"profile", "id", "name"?}` adds a profile-based entry at the end (`201`); `409` for an existing ID |
+| `POST /api/entries/{id}/duplicate` | `{"id"}` copies the entry below the original without `installed_version` (`201`) |
+| `DELETE /api/entries/{id}` | removes the entry; its record in `state.json` is kept |
+| `PUT /api/order` | `{"ids": [...]}` must list every entry exactly once; returns the new list |
+| `POST /api/checks` | `{"ids"?: [...]}` starts a check of all enabled entries or the given IDs and returns `202` with the job; `409` while another check runs |
+| `GET /api/checks`, `GET /api/checks/{job}` | the latest job (or `null`) and a job by ID: `status` (`running`, `done`, `failed`), `done`, `total`, `results` (`id`, `name`, `status` of `ok`, `error`, `disabled`, `summary`, `new_versions`, `error`), `error` |
 
 Errors are `{"error": "<message>"}` with status `400`, `401`, `403`, `404`, `405`, `409`, `413`, or `500`. An entry that cannot be resolved (for example a missing profile) is listed with its `error` text instead of being dropped.
 
@@ -694,5 +705,5 @@ Errors are `{"error": "<message>"}` with status `400`, `401`, `403`, `404`, `405
 - With a token, every request must carry it as `Authorization: Bearer <token>` or as the `firmaware_token` cookie. Opening `/?token=<token>` once sets the cookie (`HttpOnly`, `SameSite=Strict`) and redirects. Tokens are compared in constant time.
 - Without a token (loopback only) the `Host` header must be `localhost`, `127.0.0.1`, or `[::1]` with the server port, which blocks DNS rebinding.
 - Requests other than `GET` must send `X-Requested-With: firmaware` and, if an `Origin` header is present, it must match the `Host`. The server sends no CORS headers.
-- Only `/`, `/app.js`, `/style.css`, and `/favicon.svg` are served as static files (no directory access). Request bodies are limited to 64 KiB. Responses carry `Content-Security-Policy: default-src 'self'`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, and `Referrer-Policy: no-referrer`.
+- Only the files of the flat `static/` directory (`.html`, `.js`, `.css`, `.svg`) are served, by exact name and without directory access. Request bodies are limited to 64 KiB. Responses carry `Content-Security-Policy: default-src 'self'`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, and `Referrer-Policy: no-referrer`.
 - Transport is plain HTTP. For access from other machines use an SSH tunnel or a reverse proxy with TLS.

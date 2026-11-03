@@ -77,7 +77,7 @@ python3 firmaware.py --devices /path/devices.json --state /path/state.json
 | `--check` | Check sources and update state (default) |
 | `--status` | Only show stored state, no network request |
 | `--interactive`, `-i` | Interactively manage entries (check, history, reorder, edit, duplicate, delete, disable) |
-| `--serve` | Run the web interface (status, history; checks and editing follow) |
+| `--serve` | Run the web interface (status, checks, entry editing) |
 | `--host ADDRESS` | Address for `--serve` (default `127.0.0.1`; any other address needs an access token) |
 | `--port PORT` | Port for `--serve` (default `8765`) |
 | `--web-config PATH` | Path to the web access token config (default: `~/.config/firmaware/web.json`) |
@@ -254,7 +254,14 @@ python3 firmaware.py --interactive
 `--serve` starts a local web interface with the status table as start page
 (grouped by category, with installed version and state), a details panel with the
 version history, search, and filters. It works on phones and follows the system
-light/dark theme. Checks and entry editing follow in the next steps.
+light/dark theme.
+
+- **Check:** *Check all* or *Check now* per entry runs the same check as `--check`
+  and shows the result lines with a progress bar (no mail is sent; that stays with
+  `--check --notify`).
+- **Edit:** click an entry to rename it, set its installed version (or mark it as
+  updated to the latest), enable or disable it, move it up or down, duplicate it,
+  or delete it. Rows can also be dragged to reorder them within a category.
 
 ```bash
 python3 firmaware.py --serve            # http://localhost:8765/
