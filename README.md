@@ -150,8 +150,9 @@ when there are new versions or warnings). Both entries share one fetch per
 run, and they share one version history, so a new version is reported once per
 type, not once per device. The comparison uses the highest known version label; sources with
 several release tracks may report devices on an older track as outdated.
-You can maintain the value in the web interface (*Installed version* or
-*Mark as updated to latest* in the details panel).
+You can maintain the value in the web interface: *Installed version* is a list of
+the versions known for the device type (run a check first), and *Mark as updated
+to latest* picks the newest one.
 
 ### Direct
 
@@ -237,8 +238,8 @@ light/dark theme.
 - **Add:** *Add entry* lists the device types (profiles); pick one and give the
   device a name (each name can be used once). Add the same type twice to track
   two devices of it. Technical IDs are generated automatically and never shown.
-- **Edit:** click an entry to rename it, set its installed version (or mark it as
-  updated to the latest), enable or disable it, move it up or down, duplicate it,
+- **Edit:** click an entry to rename it, pick its installed version from the list of known
+  versions (or mark it as updated to the latest), enable or disable it, move it up or down, duplicate it,
   or delete it. Rows can also be dragged to reorder them within a category.
 
 ![firmAware web interface: status table and check results](docs/web-status.jpg)

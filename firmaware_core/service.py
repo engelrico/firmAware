@@ -218,6 +218,8 @@ class Workspace:
         """Change ``name``, ``enabled``, or ``installed_version`` of an entry.
 
         An empty ``name`` removes the local name; an empty ``installed_version`` clears it.
+        A new ``installed_version`` must be one of the versions known for the entry's
+        source (the web interface offers them in a list); an unchanged value is kept as is.
         """
         unknown = set(changes) - EDITABLE_FIELDS
         if unknown:
@@ -243,6 +245,15 @@ class Workspace:
                 resolved = resolve_device(candidate, self.profiles_dir)
             except ValueError as error:
                 raise ServiceError(str(error)) from None
+            chosen = candidate.get("installed_version")
+            if "installed_version" in changes and chosen and chosen != entry.get("installed_version"):
+                known = (stored_record(self._state(entries), entry) or {}).get("discovered_at") or {}
+                if not known:
+                    raise ServiceError("No known versions yet; run a check first")
+                if chosen not in known:
+                    raise ServiceError(
+                        f"'{chosen}' is not a known version of this device type; pick one from the list"
+                    )
             if "name" in changes:
                 index = entries.index(entry)
                 self._require_free_name(entries, resolved.get("name") or resolved["id"], skip=index)

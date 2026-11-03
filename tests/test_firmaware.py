@@ -1464,6 +1464,7 @@ class ServiceTests(unittest.TestCase):
             self.ws.entry("nope")
 
     def test_update_entry(self):
+        self.check("v4 v5")
         self.ws.update_entry("b", {"name": " Beta ", "installed_version": "v5", "enabled": False})
         view = next(v for v in self.ws.entries() if v["id"] == "b")
         self.assertEqual((view["name"], view["installed_version"], view["enabled"]), ("Beta", "v5", False))
@@ -1471,6 +1472,31 @@ class ServiceTests(unittest.TestCase):
         view = next(v for v in self.ws.entries() if v["id"] == "b")
         self.assertEqual(view["name"], "Profile t.one")
         self.assertIsNone(view["installed_version"])
+
+    def test_installed_version_must_be_a_known_version(self):
+        with self.assertRaises(fw_service.ServiceError) as raised:
+            self.ws.update_entry("b", {"installed_version": "v1"})  # nothing known yet
+        self.assertIn("run a check first", str(raised.exception))
+        self.check("v1 v2")
+        self.ws.update_entry("b", {"installed_version": "v1"})
+        with self.assertRaises(fw_service.ServiceError) as raised:
+            self.ws.update_entry("b", {"installed_version": "v9"})
+        self.assertIn("not a known version", str(raised.exception))
+        with self.assertRaises(fw_service.ServiceError):
+            self.ws.update_entry("b", {"installed_version": "V1"})  # exact match only
+        self.assertEqual(next(v for v in self.ws.entries() if v["id"] == "b")["installed_version"], "v1")
+        self.ws.update_entry("b", {"installed_version": ""})  # clearing is always allowed
+        self.assertIsNone(next(v for v in self.ws.entries() if v["id"] == "b")["installed_version"])
+
+    def test_an_installed_version_set_by_hand_stays_until_changed(self):
+        fw.save_devices_file(
+            self.ws.devices_path,
+            {"devices": [{"id": "a", "profile": "t.one", "name": "Alpha", "installed_version": "legacy-1"}]},
+        )
+        self.check("v1")
+        self.ws.update_entry("a", {"installed_version": "legacy-1", "name": "Alpha 2"})  # unchanged: accepted
+        with self.assertRaises(fw_service.ServiceError):
+            self.ws.update_entry("a", {"installed_version": "legacy-2"})
 
     def test_update_entry_rejects_bad_input(self):
         for changes in ({"id": "z"}, {"enabled": "yes"}, {"installed_version": 5}, {"source_url": "x"}):
@@ -1548,7 +1574,7 @@ class ServiceTests(unittest.TestCase):
             self.ws.devices_path,
             {"devices": [{"id": "x", "profile": "t.one"}, {"id": "y", "profile": "t.one"}]},
         )
-        self.ws.update_entry("x", {"installed_version": "v1", "enabled": False})
+        self.ws.update_entry("x", {"enabled": False})
         self.ws.delete_entry("y")
         self.assertEqual(self.ids(), ["x"])
 
@@ -1743,9 +1769,11 @@ class WebServerTests(unittest.TestCase):
 
     def test_update_entry(self):
         server = self.start()
+        self.run_check(server)
         status, entry = self.send(
             server, "PATCH", "/api/entries/a", {"name": "Renamed", "installed_version": "v1", "enabled": False}
         )
+        self.assertEqual(self.send(server, "PATCH", "/api/entries/a", {"installed_version": "v99"})[0], 400)
         self.assertEqual(status, 200)
         self.assertEqual((entry["name"], entry["installed_version"], entry["enabled"]), ("Renamed", "v1", False))
         status, error = self.send(server, "PATCH", "/api/entries/a", {"enabled": "yes"})

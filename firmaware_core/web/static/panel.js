@@ -44,6 +44,41 @@ function textForm({ label, value, placeholder, onSave, extra, buttonText = "Save
   return form;
 }
 
+// The installed version can only be picked from the versions known for the device type.
+function installedField(entry, extra) {
+  const known = entry.history.map((item) => item.version);
+  const current = entry.installed_version || "";
+  const options = [el("option", { value: "", text: "Not set" })];
+  if (current && !known.includes(current)) {
+    options.push(el("option", { value: current, text: `${current} (not in the list)` }));
+  }
+  known.forEach((version, index) => {
+    options.push(el("option", { value: version, text: index === 0 ? `${version} – latest` : version }));
+  });
+  const select = el(
+    "select",
+    {
+      "aria-label": "Installed version",
+      disabled: known.length === 0 && !current,
+      onchange: (event) =>
+        patch(
+          entry.id,
+          { installed_version: event.target.value },
+          event.target.value ? "Installed version saved" : "Installed version cleared",
+        ),
+    },
+    options,
+  );
+  select.value = current;
+  return el(
+    "div",
+    { class: "field" },
+    el("label", { text: "Installed version" }),
+    el("div", { class: "row" }, select, extra),
+    known.length === 0 ? el("p", { class: "hint", text: "Run a check first to see the available versions." }) : null,
+  );
+}
+
 function section(title, ...children) {
   return el("section", { class: "edit" }, el("h3", { text: title }), ...children);
 }
@@ -137,13 +172,7 @@ function renderPanel(entry) {
         placeholder: entry.name,
         onSave: (value) => patch(entry.id, { name: value }, "Name saved"),
       }),
-      textForm({
-        label: "Installed version",
-        value: entry.installed_version || "",
-        placeholder: "not set",
-        onSave: (value) => patch(entry.id, { installed_version: value }, value.trim() ? "Installed version saved" : "Installed version cleared"),
-        extra: latestButton,
-      }),
+      installedField(entry, latestButton),
       el("label", { class: "switch" }, enabled, el("span", { text: "Enabled (skipped by checks when off)" })),
     ),
     section(
