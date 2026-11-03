@@ -1262,5 +1262,32 @@ class NotificationCliTests(unittest.TestCase):
         self.smtp.send_message.assert_called_once()
 
 
+class DocumentationConsistencyTests(unittest.TestCase):
+    """Guard against drift between code and the single documentation sources."""
+
+    ROOT = Path(__file__).resolve().parent.parent
+
+    def read_doc(self, relative: str) -> str:
+        return (self.ROOT / relative).read_text(encoding="utf-8")
+
+    def test_every_source_type_is_documented(self):
+        for name in ("requirements/specification.md", "README.md"):
+            text = self.read_doc(name)
+            for source_type in sorted(fw.SUPPORTED_SOURCE_TYPES):
+                with self.subTest(doc=name, source_type=source_type):
+                    self.assertIn(f"`{source_type}`", text)
+
+    def test_every_cli_option_is_in_readme(self):
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer), self.assertRaises(SystemExit):
+            fw.parse_args(["--help"])
+        options = set(re.findall(r"--[a-z][a-z-]*", buffer.getvalue())) - {"--help"}
+        self.assertTrue(options)
+        readme = self.read_doc("README.md")
+        for option in sorted(options):
+            with self.subTest(option=option):
+                self.assertIn(f"`{option}", readme)
+
+
 if __name__ == "__main__":
     sys.exit(unittest.main())

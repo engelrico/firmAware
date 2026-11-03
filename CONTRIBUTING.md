@@ -94,26 +94,7 @@ Then open a Pull Request on GitHub.
 
 ## Profile Guidelines
 
-### Required Fields
-
-The full field reference is in [`requirements/specification.md#46-entry-profiles-format-and-required-fields`](requirements/specification.md#46-entry-profiles-format-and-required-fields).
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `schema_version` | Yes | Must be `2` |
-| `id` | Yes | Profile ID, matches filename without `.json`, pattern `[a-z0-9][a-z0-9._-]*` |
-| `name` | Yes | Human-readable display name |
-| `category` | Yes | `firmware`, `software`, or `operating_system` |
-| `source_type` | Yes | `text`, `json`, or `json_value` |
-| `source_url` | Yes | HTTP/HTTPS URL without credentials |
-
-### Optional Fields
-
-| Field | Description |
-|-------|-------------|
-| `encoding` | Python charset name (e. g. `utf-8`, `cp1252`, `latin-1`) |
-| `manufacturer` | Device manufacturer |
-| `model` | Device model |
+Required and optional fields, allowed values, and source types are defined in [`requirements/specification.md#46-entry-profiles-format-and-required-fields`](requirements/specification.md#46-entry-profiles-format-and-required-fields). Do not copy them into other documents.
 
 ### Rules
 
@@ -122,34 +103,11 @@ The full field reference is in [`requirements/specification.md#46-entry-profiles
 - **Symlinks must not lead outside** the profiles directory
 - **Profile IDs are not import paths** — no dynamic Python imports based on IDs
 
-### Source Types
-
-The full source type reference is in [`requirements/specification.md`](requirements/specification.md):
-
-| `source_type` | Required fields | Description |
-|---------------|-----------------|-------------|
-| `text` | `version_pattern`; optional `value_path` | Regex on HTML/text (after `html.unescape`); with `value_path`, on the string at that path in a JSON document |
-| `json` | `items_key`, `version_key` | Versions from a JSON list |
-| `json_value` | `value_path` | Single value via a nested JSON path |
-
 ---
 
 ## CLI Options
 
-| Option | Meaning |
-|--------|---------|
-| `--check` | Check sources and update state (default) |
-| `--status` | Show stored state only, no network request |
-| `--interactive`, `-i` | Interactively manage entries (check, history, reorder, edit, duplicate, delete, disable) |
-| `--device ID`, `-d ID` | Check or show only the entry with this ID |
-| `--devices PATH` | Path to `devices.json` |
-| `--state PATH` | Path to `state.json` |
-| `--profiles-dir PATH` | Directory with device profiles |
-| `--notify` | Send an e-mail if new versions were found or the check failed |
-| `--notify-config PATH` | Path to the SMTP config (default `~/.config/firmaware/notify.json`) |
-| `--quiet` | Suppress normal output (for cron logs); errors still go to stderr |
-
-`--device ID` also works as a positional argument: `python3 firmaware.py --check nanostation-m5-xm`.
+See the [README](README.md#cli-options) or run `python3 firmaware.py --help`.
 
 **Credentials:** SMTP credentials for `--notify` live only in `notify.json`
 outside the repository (`~/.config/firmaware/notify.json`, `chmod 600`). The
@@ -160,29 +118,29 @@ file is git-ignored. Never store credentials in `devices.json`,
 
 ## Error Handling
 
-- Configuration errors are detected **before** any network request
-- On configuration error: message on `stderr`, exit code `1`, no network access, no changes to `state.json`
-- A missing `devices.json` prints `No configuration yet: devices.json does not exist. Copy devices.template.json to devices.json and add your entries, or run --interactive to create one.` to `stderr` and exits with code `1`
-- Device errors (fetch/extraction failures) do not stop other devices from being checked
-- State is written atomically via a `.tmp` file
-- `state.json` is local runtime state, git-ignored, and created by the first `--check` run; the repo ships `state.template.json` (empty `{"devices": {}}`). `--status` prints `No state yet: state.json does not exist. Run --check first.` to `stderr` when the state file is missing.
-- No file locking — concurrent invocations with the same state file are not supported
-- A failed notification (`--notify`) prints `Notification error: ...` to `stderr` and never changes the exit code or crashes the check
-- A manual abort (`Ctrl+C`) never sends a notification
+Error handling, exit codes, storage behavior, and notification failures are specified in [`requirements/specification.md`](requirements/specification.md#9-error-handling-and-storage) and [section 13](requirements/specification.md#13-notification---notify). Configuration errors must be detected before any network request.
 
 ---
 
 ## Documentation Sync Guardrail
 
-When changing `firmaware.py`, `profiles/*.json`, `devices.json`, `state.json`, `README.md`, or `requirements/*.md`, you must also update `requirements/specification.md`, `AGENTS.md`, and `CONTRIBUTING.md` to keep them consistent. All documentation must be in English.
+Each fact has one home:
+
+| Fact | Where |
+|------|-------|
+| Profile schema, source types, behavior, output, errors | `requirements/specification.md` |
+| CLI options and user-facing usage | `README.md` |
+| Conventions and working agreements | `AGENTS.md`, `CONTRIBUTING.md` (link, do not copy) |
+
+When changing `firmaware.py`, `profiles/*.json`, `devices.json`, `state.json`, or the CLI, update the specification and the README. All documentation must be in English.
 
 Before committing, verify:
-- [`requirements/specification.md`](requirements/specification.md) reflects any schema, CLI, output, or comparison changes
-- [`AGENTS.md`](AGENTS.md) reflects any CLI, profile schema, or output grouping changes
+- The specification reflects any schema, CLI, output, or comparison changes
+- The README lists every CLI option (a test checks this)
 - All documentation text is in English (no German)
 - All profile examples show `schema_version: 2` and the `category` field
 
-A dedicated [`docGuardian`](.opencode/agents/docGuardian.md) agent is available under `.opencode/agents/` to help verify documentation consistency before commits.
+A dedicated [`docGuardian`](.opencode/agents/docGuardian.md) agent under `.opencode/agents/` helps verify documentation consistency before commits.
 
 ---
 

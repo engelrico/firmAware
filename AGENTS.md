@@ -48,16 +48,7 @@ firmAware/
 
 ### Profile Schema (version 2)
 
-Every profile in `profiles/*.json` must conform to schema v2 as defined in [`requirements/specification.md#46-entry-profiles-format-and-required-fields`](requirements/specification.md#46-entry-profiles-format-and-required-fields). Key points:
-
-| Field | Required | Allowed values / notes |
-|-------|----------|------------------------|
-| `schema_version` | Yes | Must be `2` |
-| `id` | Yes | Must match `[a-z0-9][a-z0-9._-]*`, must match filename without `.json` |
-| `name` | Yes | Non-empty string |
-| `category` | Yes | One of: `firmware`, `software`, `operating_system` |
-| `source_type` | Yes | `text`, `json`, or `json_value` |
-| `source_url` | Yes | Valid HTTP/HTTPS URL without credentials |
+Every profile in `profiles/*.json` must conform to schema v2 as defined in [`requirements/specification.md#46-entry-profiles-format-and-required-fields`](requirements/specification.md#46-entry-profiles-format-and-required-fields), which is the single reference for fields, allowed values, and source types. Non-negotiable: `schema_version` is `2`, `category` is present, and the `id` matches `[a-z0-9][a-z0-9._-]*` and the filename.
 
 Profile-based entries in `devices.json` may contain **only** `id`, `profile`, `name`, and `enabled`. Technical fields are a configuration error in profile-based entries.
 
@@ -73,20 +64,7 @@ The `version_sort_key` function compares versions **block by block as integers w
 
 ### CLI
 
-| Option | Meaning |
-|--------|---------|
-| `--check` | Check sources and update state (default) |
-| `--status` | Show stored state only, no network request |
-| `--interactive`, `-i` | Interactively manage entries (check, history, reorder, edit, duplicate, delete, disable) |
-| `--device ID`, `-d ID` | Check or show only the entry with this ID |
-| `--devices PATH` | Path to `devices.json` |
-| `--state PATH` | Path to `state.json` |
-| `--profiles-dir PATH` | Directory with device profiles |
-| `--notify` | Send an e-mail if new versions were found or the check failed |
-| `--notify-config PATH` | Path to the SMTP config (default `~/.config/firmaware/notify.json`) |
-| `--quiet` | Suppress normal output (for cron logs); errors still go to stderr |
-
-`--device ID` can also be passed as a positional argument after `--check` or `--status` (e.g. `python3 firmaware.py --check nanostation-m5-xm`).
+The CLI options are documented once, in the [README](README.md#cli-options) (and by `python3 firmaware.py --help`). Behavior is specified in [`requirements/specification.md`](requirements/specification.md#3-project-files-and-invocation).
 
 ### Credentials
 
@@ -150,7 +128,7 @@ python3 -m unittest discover -s tests -t .
 6. **Tests must pass** after any change to `firmaware.py` or `tests/test_firmaware.py`.
 7. **All UI text, error messages, and documentation must be in English.**
 8. **`devices.json` and `state.json` are local files.** Both are git-ignored and must never be committed; the repo ships `devices.template.json` (one example per entry form) and `state.template.json` (empty `{"devices": {}}`).
-9. **Documentation Sync:** When changing `firmaware.py`, `profiles/*.json`, `devices.json`, `state.json`, `README.md`, or `requirements/*.md`, you must also update `requirements/specification.md`, `AGENTS.md`, and `CONTRIBUTING.md` to keep them consistent. All documentation must be in English.
+9. **Documentation Sync:** Each fact lives in one place: schema, behavior, and output in `requirements/specification.md`; CLI options and user-facing usage in `README.md`. When changing `firmaware.py`, `profiles/*.json`, `devices.json`, `state.json`, or the CLI, update those two files. Update `AGENTS.md` and `CONTRIBUTING.md` only when conventions or workflow change; link to the specification instead of copying tables. All documentation must be in English.
 
 ---
 
