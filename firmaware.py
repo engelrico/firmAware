@@ -42,9 +42,8 @@ MAX_EXAMPLE_LENGTH = 100
 SOURCE_TEXT = "text"
 SOURCE_JSON = "json"
 SOURCE_JSON_VALUE = "json_value"
-SOURCE_JSON_TEXT = "json_text"
 
-SUPPORTED_SOURCE_TYPES = frozenset({SOURCE_TEXT, SOURCE_JSON, SOURCE_JSON_VALUE, SOURCE_JSON_TEXT})
+SUPPORTED_SOURCE_TYPES = frozenset({SOURCE_TEXT, SOURCE_JSON, SOURCE_JSON_VALUE})
 
 PROFILE_SCHEMA_VERSION = 2
 PROFILE_ID_PATTERN = re.compile(r"[a-z0-9][a-z0-9._-]*")
@@ -174,18 +173,33 @@ def fetch_source(device: Mapping[str, Any]) -> str:
 # --- Extraction per source type --------------------------------------------
 
 
-def _extract_versions_from_text(device: Mapping[str, Any], content: str) -> set[str]:
-    """Extract versions from text via a search pattern."""
+def _string_at_json_path(content: str, value_path: Sequence[str], message: str) -> str:
+    """Return the non-empty string found by following ``value_path`` in a JSON document."""
+    value: Any = json.loads(content)
+    for key in value_path:
+        if not isinstance(value, dict) or key not in value:
+            raise FirmwareSourceError(message)
+        value = value[key]
+    if not isinstance(value, str) or not value.strip():
+        raise FirmwareSourceError(message)
+    return value
+
+
+def versions_from_text(device: Mapping[str, Any], content: str) -> set[str]:
+    """Extract versions from a text/HTML source via a search pattern.
+
+    With ``value_path`` the source is a JSON document and the pattern is applied
+    to the string at that path (e. g. Zendesk ``article.body``).
+    """
+    if "value_path" in device:
+        content = _string_at_json_path(
+            content, device["value_path"], "Value at json path is missing or invalid"
+        )
     pattern = re.compile(device["version_pattern"])
     if pattern.groups > 1:
         raise FirmwareSourceError("Search pattern may contain at most one capturing group")
     group = 1 if pattern.groups else 0
     return {match.group(group) for match in pattern.finditer(html.unescape(content))}
-
-
-def versions_from_text(device: Mapping[str, Any], content: str) -> set[str]:
-    """Extract versions from a text/HTML source via a search pattern."""
-    return _extract_versions_from_text(device, content)
 
 
 def versions_from_json(device: Mapping[str, Any], content: str) -> set[str]:
@@ -208,37 +222,14 @@ def versions_from_json(device: Mapping[str, Any], content: str) -> set[str]:
 
 def versions_from_json_value(device: Mapping[str, Any], content: str) -> set[str]:
     """Extract a single version via a path within a JSON object."""
-    value: Any = json.loads(content)
-    for key in device["value_path"]:
-        value = value[key]
-    if not isinstance(value, str) or not value.strip():
-        raise FirmwareSourceError("Version field is missing or invalid")
-    return {value.strip()}
-
-
-def versions_from_json_text(device: Mapping[str, Any], content: str) -> set[str]:
-    """Extract versions from text located at a nested JSON path via a pattern.
-
-    Fetches the JSON document, follows ``value_path`` to a nested string, and
-    applies the same ``version_pattern`` search as :func:`versions_from_text`
-    to that string. Useful for JSON APIs whose payload embeds HTML or plain
-    text with version labels (e. g. Zendesk ``article.body``).
-    """
-    value: Any = json.loads(content)
-    for key in device["value_path"]:
-        if not isinstance(value, dict) or key not in value:
-            raise FirmwareSourceError("Value at json path is missing or invalid")
-        value = value[key]
-    if not isinstance(value, str) or not value.strip():
-        raise FirmwareSourceError("Value at json path is missing or invalid")
-    return _extract_versions_from_text(device, value)
+    message = "Version field is missing or invalid"
+    return {_string_at_json_path(content, device["value_path"], message).strip()}
 
 
 EXTRACTORS: dict[str, Callable[[Mapping[str, Any], str], set[str]]] = {
     SOURCE_TEXT: versions_from_text,
     SOURCE_JSON: versions_from_json,
     SOURCE_JSON_VALUE: versions_from_json_value,
-    SOURCE_JSON_TEXT: versions_from_json_text,
 }
 
 
@@ -463,6 +454,16 @@ def format_failure(error: BaseException) -> str:
 # --- Device profiles -------------------------------------------------------
 
 
+def _validate_value_path(value_path: Any, context: str) -> None:
+    """Require a non-empty list of non-empty strings."""
+    if (
+        not isinstance(value_path, list)
+        or not value_path
+        or not all(isinstance(part, str) and part.strip() for part in value_path)
+    ):
+        raise ValueError(f"{context}: Required field 'value_path' missing or invalid")
+
+
 def validate_source_config(source: Mapping[str, Any], context: str) -> None:
     """Validate the technical source configuration of a device or profile.
 
@@ -502,38 +503,15 @@ def validate_source_config(source: Mapping[str, Any], context: str) -> None:
             raise ValueError(
                 f"{context}: 'version_pattern' may contain at most one capturing group"
             )
+        if "value_path" in source:
+            _validate_value_path(source.get("value_path"), context)
     elif source_type == SOURCE_JSON:
         for key in ("items_key", "version_key"):
             value = source.get(key)
             if not isinstance(value, str) or not value.strip():
                 raise ValueError(f"{context}: Required field '{key}' missing or invalid")
     elif source_type == SOURCE_JSON_VALUE:
-        value_path = source.get("value_path")
-        if (
-            not isinstance(value_path, list)
-            or not value_path
-            or not all(isinstance(part, str) and part.strip() for part in value_path)
-        ):
-            raise ValueError(f"{context}: Required field 'value_path' missing or invalid")
-    elif source_type == SOURCE_JSON_TEXT:
-        value_path = source.get("value_path")
-        if (
-            not isinstance(value_path, list)
-            or not value_path
-            or not all(isinstance(part, str) and part.strip() for part in value_path)
-        ):
-            raise ValueError(f"{context}: Required field 'value_path' missing or invalid")
-        pattern = source.get("version_pattern")
-        if not isinstance(pattern, str) or not pattern:
-            raise ValueError(f"{context}: Required field 'version_pattern' missing")
-        try:
-            compiled = re.compile(pattern)
-        except re.error as error:
-            raise ValueError(f"{context}: Invalid regular expression: {error}") from None
-        if compiled.groups > 1:
-            raise ValueError(
-                f"{context}: 'version_pattern' may contain at most one capturing group"
-            )
+        _validate_value_path(source.get("value_path"), context)
 
 
 def validate_profile(profile: Any, profile_id: str, context: str) -> None:

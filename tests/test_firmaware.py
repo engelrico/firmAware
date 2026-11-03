@@ -81,25 +81,25 @@ class JsonValueExtractionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Version field"):
             fw.versions_from_json_value(device, json.dumps({"version": "   "}))
 
-    def test_json_text_extracts_from_nested_path(self):
+    def test_text_with_value_path_extracts_from_nested_path(self):
         device = {"value_path": ["article", "body"], "version_pattern": r"V\s*([0-9]+(?:\.[0-9]+)*)"}
         content = json.dumps({"article": {"body": "Download V1.2.3 here"}})
-        self.assertEqual(fw.versions_from_json_text(device, content), {"1.2.3"})
+        self.assertEqual(fw.versions_from_text(device, content), {"1.2.3"})
 
-    def test_json_text_unescapes_html_entities(self):
+    def test_text_with_value_path_unescapes_html_entities(self):
         device = {"value_path": ["article", "body"], "version_pattern": r"FW&([0-9]+)"}
         content = json.dumps({"article": {"body": "FW&amp;7 released"}})
-        self.assertEqual(fw.versions_from_json_text(device, content), {"7"})
+        self.assertEqual(fw.versions_from_text(device, content), {"7"})
 
-    def test_json_text_missing_value_fails(self):
+    def test_text_with_value_path_missing_value_fails(self):
         device = {"value_path": ["article", "body"], "version_pattern": r"x"}
         with self.assertRaisesRegex(ValueError, "Value at json path"):
-            fw.versions_from_json_text(device, json.dumps({"article": {}}))
+            fw.versions_from_text(device, json.dumps({"article": {}}))
 
-    def test_json_text_two_groups_rejected(self):
+    def test_text_with_value_path_two_groups_rejected(self):
         device = {"value_path": ["article", "body"], "version_pattern": r"(a)(b)"}
         with self.assertRaisesRegex(ValueError, "capturing group"):
-            fw.versions_from_json_text(device, json.dumps({"article": {"body": "ab"}}))
+            fw.versions_from_text(device, json.dumps({"article": {"body": "ab"}}))
 
 
 class ExtractDispatchTests(unittest.TestCase):
@@ -258,6 +258,31 @@ class SourceValidationTests(unittest.TestCase):
             },
             "Device 'x'",
         )
+
+    def test_text_source_with_value_path(self):
+        fw.validate_source_config(
+            {
+                "source_type": "text",
+                "source_url": "https://example.com",
+                "version_pattern": r"v[0-9]+",
+                "value_path": ["article", "body"],
+            },
+            "Device 'x'",
+        )
+
+    def test_text_source_invalid_value_path(self):
+        for value_path in ([], "body", ["a", ""]):
+            with self.subTest(value_path=value_path):
+                with self.assertRaisesRegex(ValueError, "value_path"):
+                    fw.validate_source_config(
+                        {
+                            "source_type": "text",
+                            "source_url": "https://example.com",
+                            "version_pattern": "x",
+                            "value_path": value_path,
+                        },
+                        "Device 'x'",
+                    )
 
     def test_unknown_source_type(self):
         with self.assertRaisesRegex(ValueError, "Unknown source type"):

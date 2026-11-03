@@ -115,7 +115,7 @@ The configuration is split into two levels:
 - `devices.json` describes the **personal entry selection** and contains a local ID per entry plus an optional display name.
 - `profiles/*.json` describe **reusable** fetch and version extraction for a source.
 
-An entry is configured either directly (with all technical fields in `devices.json`) or profile-based (via a profile reference). Both forms may be mixed. The root object contains a list `devices`; every local entry ID must be unique. The implementation supports the source types `text`, `json`, `json_value`, and `json_text`.
+An entry is configured either directly (with all technical fields in `devices.json`) or profile-based (via a profile reference). Both forms may be mixed. The root object contains a list `devices`; every local entry ID must be unique. The implementation supports the source types `text`, `json`, and `json_value`.
 
 **Local and private:** `devices.json` is per-user configuration and is git-ignored; it is never committed. The repository ships `devices.template.json` with one example per entry form: one profile-based entry and one direct `text` entry with a placeholder URL. On a missing configuration the program prints `No configuration yet: devices.json does not exist. Copy devices.template.json to devices.json and add your entries, or run --interactive to create one.` to `stderr` and exits with code `1`. The interactive mode creates the file on the first save.
 
@@ -127,7 +127,7 @@ An entry is configured either directly (with all technical fields in `devices.js
 | `name` | No | Local display name; overrides the profile name for profile-based entries, otherwise the ID or profile name is shown |
 | `profile` | No | Reference to an entry profile; present = profile-based entry |
 | `enabled` | No | Boolean; `false` skips the entry during `--check`; default `true` |
-| `source_type` | Direct only | `text`, `json`, `json_value`, or `json_text` |
+| `source_type` | Direct only | `text`, `json`, or `json_value` |
 | `source_url` | Direct only | URL of the source to fetch |
 
 If `profile` is set, **only** the fields `id`, `profile`, `name`, and `enabled` may occur. Technical fields such as `source_url`, `source_type`, `encoding`, or `version_pattern` are a configuration error; there is no silent overriding or ignoring. Individual technical settings remain possible via direct entries.
@@ -273,7 +273,7 @@ Example `profiles/coros.dura.json`:
 | `id` | Yes | Valid profile ID; matches filename without `.json` |
 | `name` | Yes | Non-empty string |
 | `category` | Yes | `firmware`, `software`, or `operating_system` |
-| `source_type` | Yes | `text`, `json`, `json_value`, or `json_text` |
+| `source_type` | Yes | `text`, `json`, or `json_value` |
 | `source_url` | Yes | Non-empty HTTP/HTTPS URL with host |
 | `encoding` | No | Non-empty, Python-supported charset designation |
 | `manufacturer` | No | Non-empty string |
@@ -283,10 +283,9 @@ Source-type-specific required fields:
 
 | Source type | Required fields |
 |-------------|-----------------|
-| `text` | `version_pattern`: non-empty, valid regular expression |
+| `text` | `version_pattern`: non-empty, valid regular expression; optional `value_path`: non-empty list of non-empty strings (the source is then a JSON document and the pattern is applied to the string at that path) |
 | `json` | `items_key`, `version_key`: non-empty strings |
 | `json_value` | `value_path`: non-empty list of non-empty strings |
-| `json_text` | `value_path`: non-empty list of non-empty strings; `version_pattern`: non-empty, valid regular expression |
 
 For `version_pattern`: without a capture group, the full match is the version; with exactly one capture group, its content; more than one capture group is a configuration error. Regex validity and group count are checked before a network request.
 
@@ -543,8 +542,8 @@ Live behavior: The Ubiquiti JSON structure was configured based on the response 
 | Missing version field in active JSON entry | Entry check fails |
 | `json_value` with valid path | Exactly one version stored as baseline |
 | `json_value`: missing path or value not a string | Check error, previous state retained |
-| `json_text` with valid path | Versions matched by `version_pattern` in the text value (after `html.unescape`) stored as for `text` |
-| `json_text`: missing path or value not a non-empty string | Check error, previous state retained |
+| `text` with `value_path` and valid path | Versions matched by `version_pattern` in the string at that path (after `html.unescape`) stored as for `text` |
+| `text` with `value_path`: missing path or value not a non-empty string | Check error, previous state retained |
 | Duplicate entry IDs | Configuration error |
 | Missing state file | Empty state used, file created on storage |
 | Invocation from another working directory | Default files next to script used |

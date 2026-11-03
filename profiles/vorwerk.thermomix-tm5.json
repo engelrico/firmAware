@@ -5,7 +5,7 @@
   "manufacturer": "Vorwerk",
   "model": "Thermomix TM5",
   "category": "firmware",
-  "source_type": "json_text",
+  "source_type": "text",
   "source_url": "https://support-de.vorwerk.com/api/v2/help_center/de/articles/35480859847954.json",
   "value_path": ["article", "body"],
   "version_pattern": ">\\s*(2\\.[0-9]+)\\s*<"

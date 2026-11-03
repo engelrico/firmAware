@@ -163,10 +163,9 @@ Supported source types:
 
 | `source_type` | Description | Required fields |
 |---|---|---|
-| `text` | Regex on HTML/text (after `html.unescape`) | `version_pattern` |
+| `text` | Regex on HTML/text (after `html.unescape`); with `value_path`, on the string at that path in a JSON document (e. g. an HTML article body in a JSON API) | `version_pattern`; optional `value_path` |
 | `json` | Versions from a JSON list | `items_key`, `version_key` |
 | `json_value` | Single value via a nested path | `value_path` |
-| `json_text` | Regex on a text value at a nested path (e. g. an HTML article body in a JSON API) | `value_path`, `version_pattern` |
 
 For `version_pattern`, the following applies: without a capture group, the full
 match is the version; with exactly one capture group, its content is; more than

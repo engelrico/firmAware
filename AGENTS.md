@@ -56,7 +56,7 @@ Every profile in `profiles/*.json` must conform to schema v2 as defined in [`req
 | `id` | Yes | Must match `[a-z0-9][a-z0-9._-]*`, must match filename without `.json` |
 | `name` | Yes | Non-empty string |
 | `category` | Yes | One of: `firmware`, `software`, `operating_system` |
-| `source_type` | Yes | `text`, `json`, `json_value`, or `json_text` |
+| `source_type` | Yes | `text`, `json`, or `json_value` |
 | `source_url` | Yes | Valid HTTP/HTTPS URL without credentials |
 
 Profile-based entries in `devices.json` may contain **only** `id`, `profile`, `name`, and `enabled`. Technical fields are a configuration error in profile-based entries.
