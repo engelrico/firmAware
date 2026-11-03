@@ -47,8 +47,12 @@ function entryRow(entry, openPanel) {
   const row = el(
     "tr",
     { class: entry.enabled ? "" : "off", dataset: { id: entry.id } },
-    el("td", { class: "cell-id mono muted", "data-label": "ID" }, entry.id, entry.enabled ? "" : " [off]"),
-    el("td", { class: "cell-name", "data-label": "Entry" }, nameButton),
+    el(
+      "td",
+      { class: "cell-name", "data-label": "Entry" },
+      nameButton,
+      entry.enabled ? "" : el("span", { class: "muted", text: " [off]" }),
+    ),
     el("td", { class: "nowrap", "data-label": "Last check" }, formatTime(entry.last_checked)),
     el("td", { class: "mono", "data-label": "Last version" }, dash(entry.latest_version)),
     el("td", { class: "nowrap", "data-label": "First seen" }, entry.first_seen ? formatTime(entry.first_seen) : "–"),
@@ -87,7 +91,7 @@ function groupTable(entries, openPanel) {
   const head = el(
     "tr",
     {},
-    ...["ID", "Entry", "Last check", "Last version", "First seen", "Installed", "State"].map((label) =>
+    ...["Entry", "Last check", "Last version", "First seen", "Installed", "State"].map((label) =>
       el("th", { scope: "col", text: label }),
     ),
   );

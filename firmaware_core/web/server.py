@@ -325,12 +325,12 @@ class Handler(BaseHTTPRequestHandler):
 
         def add() -> None:
             body = self._body()
-            workspace.add_entry(body.get("profile"), body.get("id"), body.get("name"))
-            self._json(HTTPStatus.CREATED, workspace.entry(body["id"]))
+            new_id = workspace.add_entry(body.get("profile"), body.get("name"), body.get("id"))
+            self._json(HTTPStatus.CREATED, workspace.entry(new_id))
 
         def duplicate(entry_id: str) -> None:
-            new_id = self._body().get("id")
-            workspace.duplicate_entry(entry_id, new_id)
+            body = self._body()
+            new_id = workspace.duplicate_entry(entry_id, body.get("name"), body.get("id"))
             self._json(HTTPStatus.CREATED, workspace.entry(new_id))
 
         def delete(entry_id: str) -> None:

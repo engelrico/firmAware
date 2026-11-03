@@ -23,7 +23,7 @@ export function visibleEntries() {
     if (state.filter === "outdated" && !isOutdated(entry)) return false;
     if (state.filter === "disabled" && entry.enabled) return false;
     if (!query) return true;
-    return [entry.id, entry.name, entry.latest_version, entry.installed_version]
+    return [entry.name, entry.latest_version, entry.installed_version]
       .filter(Boolean)
       .some((value) => value.toLowerCase().includes(query));
   });

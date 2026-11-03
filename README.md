@@ -83,7 +83,7 @@ python3 firmaware.py --devices /path/devices.json --state /path/state.json
 | `--devices PATH` | Path to `devices.json` (default: next to the script) |
 | `--state PATH` | Path to `state.json` (default: next to the script) |
 | `--profiles-dir PATH` | Directory with device profiles (default: `profiles` next to the script) |
-| `--device ID`, `-d ID` | Check or show only the entry with this ID |
+| `--device NAME`, `-d NAME` | Check or show only the entry with this name (case-insensitive; an ID works too) |
 | `--notify` | Send an e-mail if new versions were found or the check failed |
 | `--notify-config PATH` | Path to the SMTP config (default: `~/.config/firmaware/notify.json`) |
 | `--quiet` | Suppress normal output (for cron logs); errors still go to stderr |
@@ -94,8 +94,9 @@ relative to the directory of the Python file – **not** relative to the current
 working directory. An explicitly relative `--profiles-dir`, however, is resolved
 relative to the current working directory.
 
-A device ID can also be passed as a positional argument after `--check` or
-`--status` (e. g. `python3 firmaware.py --check nanostation-m5-xm`).
+A name can also be passed as a positional argument after `--check` or
+`--status` (e. g. `python3 firmaware.py --check "NanoStation M5 XM"`); a unique
+entry ID works as well. An ambiguous name is an error that lists the matching IDs.
 
 Exit codes: `0` success, `1` configuration, check, or storage error,
 `130` abort via `Ctrl+C`.
@@ -233,9 +234,9 @@ light/dark theme.
 - **Check:** *Check all* or *Check now* per entry runs the same check as `--check`
   and shows the result lines with a progress bar (no mail is sent; that stays with
   `--check --notify`).
-- **Add:** *Add entry* lists the device types (profiles); pick one, choose a
-  unique ID and optionally a name. Add the same type twice to track two devices
-  of it.
+- **Add:** *Add entry* lists the device types (profiles); pick one and give the
+  device a name (each name can be used once). Add the same type twice to track
+  two devices of it. Technical IDs are generated automatically and never shown.
 - **Edit:** click an entry to rename it, set its installed version (or mark it as
   updated to the latest), enable or disable it, move it up or down, duplicate it,
   or delete it. Rows can also be dragged to reorder them within a category.
@@ -304,8 +305,11 @@ reference.
   `state.json.bak`.
 
 The `--status` output groups entries by category (Firmware, Software,
-Operating System, Other) and shows an `ID` column per row, so the ID can be
-copied for use with `--device`.
+Operating System, Other); disabled entries are marked `[off]`. Entries are
+addressed by name (`--device "Tolino (bedroom)"`). Each entry also has a
+technical `id` in `devices.json`, generated from its name when you add it in the
+web interface; it stays stable when you rename the entry and is only needed to
+disambiguate two entries that share a name in an old file.
 
 If `state.json` is missing, an empty state is used. The file is written
 atomically via an adjacent `.tmp` file. `--status` prints

@@ -100,15 +100,15 @@ Add the field validation and the extraction function to `firmaware_core/sources.
 ### Check a single entry
 
 ```bash
-python3 firmaware.py --check --device nanostation-m5-xm
+python3 firmaware.py --check --device "NanoStation M5 XM"
 # or positional shortcut:
-python3 firmaware.py --check nanostation-m5-xm
+python3 firmaware.py --check "NanoStation M5 XM"
 ```
 
 ### Show status for a single entry
 
 ```bash
-python3 firmaware.py --status --device nanostation-m5-xm
+python3 firmaware.py --status --device "NanoStation M5 XM"
 ```
 
 ### Run tests
@@ -119,7 +119,7 @@ python3 -m unittest discover -s tests -t .
 
 ### Output grouping
 
-`--status` and `--check` group entries by category: Firmware, Software, Operating System. Unknown/missing categories appear under "Other". Each `--status` row shows an `ID` column.
+`--status` and `--check` group entries by category: Firmware, Software, Operating System. Unknown/missing categories appear under "Other". Entries are addressed by name (`--device NAME`); the technical `id` is generated and not shown in `--status` or the web interface.
 
 ---
 

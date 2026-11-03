@@ -1489,30 +1489,78 @@ class ServiceTests(unittest.TestCase):
         view = next(v for v in self.ws.entries() if v["id"] == "b")
         self.assertEqual((view["installed_version"], view["installed_state"]), ("v10", "current"))
 
-    def test_add_duplicate_delete_reorder(self):
-        self.ws.add_entry("t.two", "d", "Delta")
-        self.assertEqual(self.ids(), ["a", "b", "c", "d"])
-        for bad in ("D", "", "a b"):
+    def test_add_generates_ids_from_names(self):
+        self.ws.delete_entry("c")  # frees the default name of profile t.two
+        self.assertEqual(self.ws.add_entry("t.two", "Delta Büro"), "delta-buro")
+        self.assertEqual(self.ws.add_entry("t.two"), "profile-t.two")  # profile name as default
+        self.assertEqual(self.ws.add_entry("t.two", "Profile t.two!"), "profile-t.two-2")
+        self.assertEqual(self.ws.add_entry("t.one", "###"), "entry")
+        self.assertEqual(self.ws.add_entry("t.one", "###!"), "entry-2")
+        self.assertEqual(self.ids(), ["a", "b", "delta-buro", "profile-t.two", "profile-t.two-2", "entry", "entry-2"])
+        views = {v["id"]: v for v in self.ws.entries()}
+        self.assertEqual(views["delta-buro"]["name"], "Delta Büro")
+        self.assertIsNone(views["profile-t.two"]["custom_name"])  # default name is not stored
+
+    def test_add_checks_name_and_id(self):
+        self.ws.add_entry("t.two", "Delta")
+        with self.assertRaises(fw_service.ConflictError):
+            self.ws.add_entry("t.two", " delta ")  # same name, any case and spacing
+        with self.assertRaises(fw_service.ConflictError):
+            self.ws.add_entry("t.one")  # default name "Profile t.one" is used by entry b
+        for bad_id in ("D", "", "a b"):
             with self.assertRaises(fw_service.ServiceError):
-                self.ws.add_entry("t.two", bad)
+                self.ws.add_entry("t.two", "Echo", bad_id)
         with self.assertRaises(fw_service.ConflictError):
-            self.ws.add_entry("t.two", "d")
+            self.ws.add_entry("t.two", "Echo", "a")
         with self.assertRaises(fw_service.ServiceError):
-            self.ws.add_entry("missing", "e")
-        self.ws.duplicate_entry("a", "a2")
-        self.assertEqual(self.ids(), ["a", "a2", "b", "c", "d"])
-        clone = next(v for v in self.ws.entries() if v["id"] == "a2")
+            self.ws.add_entry("missing", "Foxtrot")
+        with self.assertRaises(fw_service.ServiceError):
+            self.ws.add_entry("t.two", 5)
+        self.assertEqual(self.ws.add_entry("t.two", "Echo", "custom-id"), "custom-id")
+
+    def test_duplicate_names_the_copy(self):
+        self.assertEqual(self.ws.duplicate_entry("a"), "alpha-copy")
+        self.assertEqual(self.ws.duplicate_entry("a"), "alpha-copy-2")
+        self.assertEqual(self.ids(), ["a", "alpha-copy-2", "alpha-copy", "b", "c"])
+        names = {v["id"]: v["name"] for v in self.ws.entries()}
+        self.assertEqual((names["alpha-copy"], names["alpha-copy-2"]), ("Alpha (copy)", "Alpha (copy 2)"))
+        self.assertEqual(self.ws.duplicate_entry("a", "Kitchen"), "kitchen")
+        clone = next(v for v in self.ws.entries() if v["id"] == "kitchen")
         self.assertIsNone(clone["installed_version"])
-        self.assertEqual(clone["custom_name"], "Alpha")
         with self.assertRaises(fw_service.ConflictError):
-            self.ws.duplicate_entry("a", "b")
-        self.ws.reorder(["d", "c", "b", "a2", "a"])
-        self.assertEqual(self.ids(), ["d", "c", "b", "a2", "a"])
-        for bad in (["a"], ["a", "a", "b", "c", "d"], ["a", "b", "c", "d", "zzz"]):
+            self.ws.duplicate_entry("a", "kitchen")
+        with self.assertRaises(fw_service.NotFoundError):
+            self.ws.duplicate_entry("nope")
+
+    def test_rename_must_keep_names_unique(self):
+        with self.assertRaises(fw_service.ConflictError):
+            self.ws.update_entry("b", {"name": "alpha"})
+        self.ws.update_entry("a", {"name": "ALPHA"})  # an entry may change its own spelling
+        with self.assertRaises(fw_service.ConflictError):
+            self.ws.update_entry("a", {"name": ""})  # falls back to the profile name, used by b
+        self.assertEqual(next(v for v in self.ws.entries() if v["id"] == "a")["name"], "ALPHA")
+        self.ws.update_entry("b", {"name": "Beta"})
+        self.ws.update_entry("a", {"name": ""})  # the profile name is free now
+        self.assertEqual(next(v for v in self.ws.entries() if v["id"] == "a")["name"], "Profile t.one")
+
+    def test_existing_duplicate_names_do_not_block_other_edits(self):
+        fw.save_devices_file(
+            self.ws.devices_path,
+            {"devices": [{"id": "x", "profile": "t.one"}, {"id": "y", "profile": "t.one"}]},
+        )
+        self.ws.update_entry("x", {"installed_version": "v1", "enabled": False})
+        self.ws.delete_entry("y")
+        self.assertEqual(self.ids(), ["x"])
+
+    def test_order_and_delete(self):
+        self.ws.add_entry("t.two", "Delta")
+        self.ws.reorder(["delta", "c", "b", "a"])
+        self.assertEqual(self.ids(), ["delta", "c", "b", "a"])
+        for bad in (["a"], ["a", "a", "b", "c", "delta"], ["a", "b", "c", "delta", "zzz"]):
             with self.assertRaises(fw_service.ServiceError):
                 self.ws.reorder(bad)
         self.ws.delete_entry("c")
-        self.assertEqual(self.ids(), ["d", "b", "a2", "a"])
+        self.assertEqual(self.ids(), ["delta", "b", "a"])
         with self.assertRaises(fw_service.NotFoundError):
             self.ws.delete_entry("c")
 
@@ -1524,7 +1572,7 @@ class ServiceTests(unittest.TestCase):
         ws = fw_service.Workspace(
             self.ws.devices_path.with_name("fresh.json"), self.ws.state_path, self.profiles_dir
         )
-        ws.add_entry("t.one", "first")
+        ws.add_entry("t.one", "First")
         self.assertEqual([v["id"] for v in ws.entries()], ["first"])
 
 
@@ -1721,6 +1769,22 @@ class WebServerTests(unittest.TestCase):
         self.assertEqual(self.send(server, "PUT", "/api/order", {"ids": ["a"]})[0], 400)
         self.assertEqual(self.send(server, "DELETE", "/api/entries/a2")[0], 200)
         self.assertEqual(self.send(server, "DELETE", "/api/entries/a2")[0], 404)
+
+    def test_names_instead_of_ids(self):
+        server = self.start()
+        status, entry = self.send(server, "POST", "/api/entries", {"profile": "t.one", "name": "Beta Reader"})
+        self.assertEqual((status, entry["id"], entry["name"]), (201, "beta-reader", "Beta Reader"))
+        status, error = self.send(server, "POST", "/api/entries", {"profile": "t.one", "name": "beta reader"})
+        self.assertEqual(status, 409)
+        self.assertIn("already used", error["error"])
+        self.assertEqual(self.send(server, "POST", "/api/entries", {"profile": "t.one", "name": 5})[0], 400)
+        status, copy_ = self.send(server, "POST", "/api/entries/a/duplicate", {})
+        self.assertEqual((status, copy_["id"], copy_["name"]), (201, "alpha-copy", "Alpha (copy)"))
+        status, copy_ = self.send(server, "POST", "/api/entries/a/duplicate", {"name": "Garage"})
+        self.assertEqual((status, copy_["id"]), (201, "garage"))
+        self.assertEqual(self.send(server, "POST", "/api/entries/a/duplicate", {"name": "garage"})[0], 409)
+        status, error = self.send(server, "PATCH", "/api/entries/beta-reader", {"name": "ALPHA"})
+        self.assertEqual(status, 409)
 
     def test_installed_latest_needs_known_versions(self):
         server = self.start()
@@ -1987,7 +2051,7 @@ class SharedSourceTests(unittest.TestCase):
         self.assertEqual(fetched, [])
         self.assertEqual(self.state.read_text(), original)
         self.assertFalse(self.state.with_name("state.json.bak").exists())
-        self.assertIn("outdated", next(l for l in out.splitlines() if l.startswith("phone-a")))
+        self.assertIn("outdated", next(l for l in out.splitlines() if l.startswith("Phone A")))
 
     # --- service layer ---------------------------------------------------------
 
@@ -2027,6 +2091,72 @@ class SharedSourceTests(unittest.TestCase):
             results = ws.check()
         self.assertEqual([r["status"] for r in results], ["error", "error"])
         self.assertEqual({r["summary"] for r in results}, {"Check error: boom"})
+
+
+class DeviceSelectionTests(unittest.TestCase):
+    """--device accepts a name (any case) or an ID."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        root = Path(self._tmp.name)
+        self.devices, self.state = root / "devices.json", root / "state.json"
+        self.profiles = root / "profiles"
+        self.profiles.mkdir()
+        entries = [
+            {"id": "tolino-living", "name": "Tolino (living room)", "source_type": "text",
+             "source_url": "https://example.com/t", "version_pattern": r"v[0-9]+"},
+            {"id": "tolino-bed", "name": "Tolino (bedroom)", "source_type": "text",
+             "source_url": "https://example.com/t", "version_pattern": r"v[0-9]+"},
+            {"id": "twin-1", "name": "Twin", "source_type": "text",
+             "source_url": "https://example.com/t", "version_pattern": r"v[0-9]+"},
+            {"id": "twin-2", "name": "twin", "source_type": "text",
+             "source_url": "https://example.com/t", "version_pattern": r"v[0-9]+"},
+        ]
+        fw.save_devices_file(self.devices, {"devices": entries})
+
+    def run_cli(self, *args):
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.object(fw_extract, "fetch_source", return_value="v1"):
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                code = fw.main(
+                    ["--devices", str(self.devices), "--state", str(self.state),
+                     "--profiles-dir", str(self.profiles), *args]
+                )
+        return code, out.getvalue(), err.getvalue()
+
+    def test_select_by_name_any_case_or_by_id(self):
+        for selector in ("tolino (BEDROOM)", "Tolino (bedroom)", "tolino-bed"):
+            with self.subTest(selector=selector):
+                code, out, _ = self.run_cli("--check", "--device", selector)
+                self.assertEqual(code, 0)
+                self.assertIn("Tolino (bedroom)", out)
+                self.assertNotIn("living room", out)
+
+    def test_positional_name_and_status(self):
+        code, out, _ = self.run_cli("--status", "Tolino (living room)")
+        self.assertEqual(code, 0)
+        self.assertIn("Tolino (living room)", out)
+        self.assertNotIn("bedroom", out)
+        self.assertNotIn("tolino-living", out)  # IDs are not shown
+
+    def test_unknown_and_ambiguous_names(self):
+        code, _, err = self.run_cli("--check", "--device", "Nokia")
+        self.assertEqual(code, 1)
+        self.assertIn("No entry 'Nokia'", err)
+        code, _, err = self.run_cli("--check", "--device", "TWIN")
+        self.assertEqual(code, 1)
+        self.assertIn("twin-1", err)
+        self.assertIn("twin-2", err)
+        code, _, _ = self.run_cli("--check", "--device", "twin-2")  # the ID disambiguates
+        self.assertEqual(code, 0)
+
+    def test_disabled_entry_is_marked_in_status(self):
+        data = json.loads(self.devices.read_text())
+        data["devices"][0]["enabled"] = False
+        fw.save_devices_file(self.devices, data)
+        _, out, _ = self.run_cli("--status", "tolino-living")
+        self.assertIn("Tolino (living room) [off]", out)
 
 
 class SourceTypeRegistryTests(unittest.TestCase):
@@ -2241,14 +2371,15 @@ class InstalledVersionTests(unittest.TestCase):
         self.write_devices(self.entry("old", "v1"), self.entry("new", "v2"), self.entry("none"))
         self.run_cli("v1 v2")
         out, _ = self.run_cli("v1 v2", extra=["--status"])
-        header = next(line for line in out.splitlines() if line.startswith("ID"))
+        header = next(line for line in out.splitlines() if line.startswith("Entry"))
         self.assertIn("Installed", header)
         self.assertIn("State", header)
-        rows = {line.split()[0]: line for line in out.splitlines() if line.split()[:1] in (["old"], ["new"], ["none"])}
-        self.assertIn("outdated", rows["old"])
-        self.assertIn("current", rows["new"])
-        self.assertNotIn("outdated", rows["none"])
-        self.assertNotIn("current", rows["none"])
+        rows = {line.split()[0]: line for line in out.splitlines() if line.split()[:1] in (["Old"], ["New"], ["None"])}
+        self.assertIn("outdated", rows["Old"])
+        self.assertIn("current", rows["New"])
+        self.assertNotIn("outdated", rows["None"])
+        self.assertNotIn("current", rows["None"])
+        self.assertNotIn("ID", header.split())
 
     def test_mail_lists_outdated_devices_with_new_version(self):
         self.write_devices(self.entry("old", "v1"), self.entry("new", "v2"))

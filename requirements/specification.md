@@ -73,12 +73,12 @@ python3 firmaware.py --devices ./devices.json --profiles-dir ./profiles --check
 
 Without arguments, both JSON files are looked up relative to the Python file's directory – **not** relative to the current working directory. An explicitly relative `--profiles-dir`, however, is resolved relative to the current working directory. If the state file does not exist, an empty state is used. Configuration and state are read and written as UTF-8.
 
-With `--device ID` (short form `-d ID`) or an ID as a positional argument after `--check`/`--status`, only the corresponding entry is checked or shown. If the ID does not exist, a configuration error occurs.
+With `--device NAME` (short form `-d NAME`) or a name as a positional argument after `--check`/`--status`, only the corresponding entry is checked or shown. The argument is matched first against the entry IDs (exact), then against the display names (case-insensitive, surrounding spaces ignored). Nothing found is a configuration error (`No entry 'X'`); several entries with the same name are a configuration error that lists their IDs, and the ID selects one of them.
 
 ```bash
-python3 firmaware.py --check --device nanostation-m5-xm
-python3 firmaware.py --check nanostation-m5-xm
-python3 firmaware.py --status nanostation-m5-xm
+python3 firmaware.py --check --device "NanoStation M5 XM"
+python3 firmaware.py --check "NanoStation M5 XM"
+python3 firmaware.py --status "NanoStation M5 XM"
 ```
 
 With `--notify`, the check additionally sends a plain-text e-mail when new
@@ -111,7 +111,7 @@ An entry is configured either directly (with all technical fields in `devices.js
 
 | Field | Required | Meaning |
 |-------|----------|---------|
-| `id` | Yes | Local entry ID; unique state key |
+| `id` | Yes | Technical entry ID; unique, stable, and never shown in the web interface. The web interface generates it from the entry name (`[a-z0-9._-]`, suffix `-2`, `-3`, ... if taken). It keys the record of a direct entry in `state.json` and identifies the entry in the web API and for `--device`. Renaming an entry does not change it |
 | `name` | No | Local display name; overrides the profile name for profile-based entries, otherwise the ID or profile name is shown |
 | `profile` | No | Reference to an entry profile; present = profile-based entry |
 | `enabled` | No | Boolean; `false` skips the entry during `--check`; default `true` |
@@ -469,7 +469,7 @@ A newly appearing older entry is also reported. Changes to release notes or down
 
 Regular results go to stdout, errors to stderr. Output is compact, one line per entry, without blank lines. Entries are grouped by category (Firmware, Software, Operating System; unknown categories under "Other"). Entry name and status are column-aligned.
 
-`--status` shows an additional `ID` column per row, so entries can be selected specifically with `--device ID`.
+`--status` shows no ID; entries are addressed by name (`--device NAME`). A disabled entry is marked `[off]` after its name.
 
 `--check` (default) shows one section per category and one line per entry:
 
@@ -597,9 +597,11 @@ Live behavior: The Ubiquiti JSON structure was configured based on the response 
 | One invalid profile | No check and no state change |
 | Direct configuration without profile directory | Works |
 | COROS extraction from sample data | `["3.0808.0", "3.0910.0"]` |
-| `--device <id>` | Only this one entry is checked/shown |
-| `--device <id>` not existent | Configuration error, exit code 1 |
-| `--status` ID column | Each row shows the entry ID |
+| `--device <name>` | Only this one entry is checked/shown; name matching ignores case |
+| `--device <id>` | An exact ID selects its entry as well |
+| `--device <name>` unknown or ambiguous | Configuration error, exit code 1; an ambiguous name lists the IDs |
+| `--status` | No ID column; disabled entries are marked `[off]` |
+| Entry names in the web interface | Adding, duplicating, and renaming reject a name already used by another entry (case-insensitive) |
 | Clustering by category | Entries grouped under Firmware, Software, Operating System, Other |
 | Highest version shown | `max(versions, key=version_sort_key)` instead of last sorted element |
 | `installed_version` valid / invalid | Accepted (trimmed) / configuration error; not allowed in a profile file |
@@ -690,8 +692,8 @@ Notification does not change the exit-code semantics: `0` for a successful run
 Vanilla HTML, CSS, and JavaScript without build step, framework, or external request (`index.html`, `app.js`, `style.css`, `favicon.svg`). The start page is the `--status` table: entries grouped by category with the columns `ID`, `Entry`, `Last check`, `Last version`, `First seen`, `Installed`, `State`, read from the stored state without any network request. Search, a filter (all, outdated, disabled), light and dark theme following the system, and a card layout on narrow screens.
 
 - **Check** (like `--check`): "Check all" and "Check now" per entry start a background job. A result panel shows the per-entry lines the command line prints (`Baseline (N): ...`, `new: ...`, `no changes`, `outdated: installed X, latest Y`, `Check error: ...`, `[disabled]`) with a progress bar; the table refreshes when the job ends. A reloaded page resumes the latest job. The web check never sends mail; scheduled mail stays with `--check --notify`.
-- **Edit** (replaces the former `--interactive` mode): clicking an entry opens a details panel with the version history and these actions: edit the name (empty restores the profile name), set the installed version, mark it as updated to the latest known version, enable or disable, move up or down within its category, duplicate with a new ID (the copy has no installed version), and delete (two clicks). Rows can also be reordered by drag and drop while no filter or search is active.
-- **Add:** the "Add entry" dialog lists the valid profiles (searchable, with a badge for types already in use) and creates a profile-based entry with a unique ID (suggested from the profile ID) and an optional name; the details panel of the new entry opens afterwards.
+- **Edit** (replaces the former `--interactive` mode): clicking an entry opens a details panel with the version history and these actions: edit the name (empty restores the profile name), set the installed version, mark it as updated to the latest known version, enable or disable, move up or down within its category, duplicate under a new name (default `<name> (copy)`; the copy has no installed version), and delete (two clicks). Rows can also be reordered by drag and drop while no filter or search is active.
+- **Add:** the "Add entry" dialog lists the valid profiles (searchable, with a badge for types already in use) and creates a profile-based entry with the name you give it (prefilled with the profile name; every name can be used once) and a generated ID; the details panel of the new entry opens afterwards.
 - **Accessibility and layout:** native `<dialog>` for the add form, a focus-trapped details panel closed with `Escape`, keyboard-operable controls, `aria-live` regions for progress and messages, larger touch targets on touch screens, and no external fonts or requests. Entries from invalid configuration stay visible with their error.
 
 ### API (JSON, under `/api`)
@@ -700,10 +702,10 @@ Vanilla HTML, CSS, and JavaScript without build step, framework, or external req
 | `GET /api/entries` | `{"entries": [...]}` with `id`, `name`, `custom_name`, `category`, `kind` (`profile` or `direct`), `profile`, `enabled`, `source_url`, `source_type`, `last_checked`, `latest_version`, `first_seen`, `known_versions`, `installed_version`, `installed_state` (`current`, `outdated`, `unknown`, or `null`), `error` |
 | `GET /api/entries/{id}` | the same fields plus `history` (version, `discovered_at`, `newest`), newest version first |
 | `GET /api/profiles` | `{"profiles": [...]}` with `id`, `name`, `category`, `manufacturer`, `model` of every valid profile |
-| `PATCH /api/entries/{id}` | body with any of `name` (empty removes the local name), `enabled`, `installed_version` (empty clears); returns the entry |
+| `PATCH /api/entries/{id}` | body with any of `name` (empty removes the local name; `409` if another entry already shows that name), `enabled`, `installed_version` (empty clears); returns the entry |
 | `POST /api/entries/{id}/installed-latest` | sets `installed_version` to the highest known version; `409` if none is known yet |
-| `POST /api/entries` | `{"profile", "id", "name"?}` adds a profile-based entry at the end (`201`); `409` for an existing ID |
-| `POST /api/entries/{id}/duplicate` | `{"id"}` copies the entry below the original without `installed_version` (`201`) |
+| `POST /api/entries` | `{"profile", "name"?, "id"?}` adds a profile-based entry at the end (`201`); the name defaults to the profile name, the ID is generated from the name unless given; `409` for a name or ID already used |
+| `POST /api/entries/{id}/duplicate` | `{"name"?, "id"?}` copies the entry below the original without `installed_version` (`201`); the default name is `<name> (copy)`, then `(copy 2)`, ...; `409` for a name or ID already used |
 | `DELETE /api/entries/{id}` | removes the entry; its record in `state.json` is kept |
 | `PUT /api/order` | `{"ids": [...]}` must list every entry exactly once; returns the new list |
 | `POST /api/checks` | `{"ids"?: [...]}` starts a check of all enabled entries or the given IDs and returns `202` with the job; `409` while another check runs |

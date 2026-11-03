@@ -5,7 +5,6 @@ import { orderAfterMove, state } from "./state.js";
 import { stateBadge } from "./table.js";
 import { $, announceChange, api, dash, el, entryUrl, formatTime, toast } from "./util.js";
 
-const ID_PATTERN = "[a-z0-9][a-z0-9._-]*";
 let current = null; // { id, opener }
 
 export const isOpen = () => !$("#panel").hidden;
@@ -28,8 +27,8 @@ async function change(request, okText) {
 const patch = (id, changes, okText) =>
   change(() => api(entryUrl(id), { method: "PATCH", body: changes }), okText);
 
-function textForm({ label, value, placeholder, onSave, extra, pattern }) {
-  const input = el("input", { type: "text", value: value ?? "", placeholder, "aria-label": label, pattern, autocomplete: "off" });
+function textForm({ label, value, placeholder, onSave, extra, buttonText = "Save" }) {
+  const input = el("input", { type: "text", value: value ?? "", placeholder, "aria-label": label, autocomplete: "off" });
   const form = el(
     "form",
     {
@@ -40,7 +39,7 @@ function textForm({ label, value, placeholder, onSave, extra, pattern }) {
       },
     },
     el("label", { text: label }),
-    el("div", { class: "row" }, input, el("button", { type: "submit", class: "btn", text: "Save" }), extra),
+    el("div", { class: "row" }, input, el("button", { type: "submit", class: "btn", text: buttonText }), extra),
   );
   return form;
 }
@@ -85,7 +84,6 @@ function renderPanel(entry) {
   if (entry.error) body.append(el("div", { class: "message error", text: entry.error }));
 
   const facts = [
-    fact("ID", el("span", { class: "mono", text: entry.id })),
     fact("Category", dash(entry.category)),
     entry.kind === "profile" ? fact("Profile", el("span", { class: "mono", text: entry.profile })) : null,
     fact("Last check", formatTime(entry.last_checked)),
@@ -152,12 +150,12 @@ function renderPanel(entry) {
       "Order and copies",
       el("div", { class: "row" }, move(entry, -1, "Move up"), move(entry, 1, "Move down")),
       textForm({
-        label: "Duplicate as new ID",
-        value: "",
-        placeholder: "e.g. my-second-device",
-        pattern: ID_PATTERN,
+        label: "Name for the copy",
+        value: `${entry.name} (copy)`,
+        placeholder: "Name of the new device",
+        buttonText: "Duplicate",
         onSave: (value) =>
-          change(() => api(`${entryUrl(entry.id)}/duplicate`, { method: "POST", body: { id: value.trim() } }), `Duplicated as ${value.trim()}`),
+          change(() => api(`${entryUrl(entry.id)}/duplicate`, { method: "POST", body: { name: value.trim() } }), `Duplicated as ${value.trim()}`),
       }),
     ),
     section(

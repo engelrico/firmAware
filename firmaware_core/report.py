@@ -150,7 +150,7 @@ def print_status(devices: Sequence[Mapping[str, Any]], state: Mapping[str, Any])
             entry = stored_record(state, device) or {}
             discovered = entry.get("discovered_at") or {}
             enabled = device.get("enabled", True)
-            display_id = device["id"] if enabled else f"{device['id']} [off]"
+            shown_name = display_name(device) if enabled else f"{display_name(device)} [off]"
             if discovered:
                 latest_version = max(discovered, key=version_sort_key)
                 first_seen = format_timestamp(discovered[latest_version])
@@ -162,8 +162,7 @@ def print_status(devices: Sequence[Mapping[str, Any]], state: Mapping[str, Any])
             installed_state = "–" if status.state == STATE_NOT_SET else status.state
             rows.append(
                 (
-                    display_id,
-                    display_name(device),
+                    shown_name,
                     format_timestamp(entry.get("last_checked")),
                     latest_version,
                     first_seen,
@@ -172,7 +171,7 @@ def print_status(devices: Sequence[Mapping[str, Any]], state: Mapping[str, Any])
                 )
             )
 
-        headers = ("ID", "Entry", "Last check", "Last version", "First seen", "Installed", "State")
+        headers = ("Entry", "Last check", "Last version", "First seen", "Installed", "State")
         if rows:
             widths = [max(len(headers[i]), *(len(row[i]) for row in rows)) for i in range(len(headers))]
         else:

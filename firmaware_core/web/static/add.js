@@ -1,4 +1,4 @@
-// "Add entry" dialog: pick a device type (profile), choose an ID, create the entry.
+// "Add entry" dialog: pick a device type (profile), name the device, create the entry.
 
 import { openPanel } from "./panel.js";
 import { state } from "./state.js";
@@ -6,15 +6,7 @@ import { $, announceChange, api, el, toast } from "./util.js";
 
 let profiles = [];
 let selected = null;
-let suggestedId = "";
-
-function uniqueId(base) {
-  const taken = new Set(state.entries.map((entry) => entry.id));
-  if (!taken.has(base)) return base;
-  let n = 2;
-  while (taken.has(`${base}-${n}`)) n += 1;
-  return `${base}-${n}`;
-}
+let suggestedName = "";
 
 function showError(text) {
   const box = $("#add-error");
@@ -24,11 +16,11 @@ function showError(text) {
 
 function select(profile) {
   selected = profile;
-  const idField = $("#add-id");
-  // Keep an ID the user typed; replace only a suggestion.
-  if (!idField.value || idField.value === suggestedId) {
-    suggestedId = uniqueId(profile.id.replace(/\./g, "-"));
-    idField.value = suggestedId;
+  const nameField = $("#add-name");
+  // Keep a name the user typed; replace only the suggestion.
+  if (!nameField.value || nameField.value === suggestedName) {
+    suggestedName = profile.name;
+    nameField.value = suggestedName;
   }
   $("#add-submit").disabled = false;
   showError("");
@@ -70,7 +62,7 @@ function renderProfiles() {
 
 export async function openAddDialog() {
   selected = null;
-  suggestedId = "";
+  suggestedName = "";
   $("#add-form").reset();
   $("#add-submit").disabled = true;
   showError("");
@@ -88,18 +80,18 @@ export async function openAddDialog() {
 async function submit(event) {
   event.preventDefault();
   if (!selected) return;
-  const id = $("#add-id").value.trim();
   const name = $("#add-name").value.trim();
+  let created;
   try {
-    await api("/api/entries", { method: "POST", body: { profile: selected.id, id, ...(name ? { name } : {}) } });
+    created = await api("/api/entries", { method: "POST", body: { profile: selected.id, name } });
   } catch (error) {
     showError(error.message);
     return;
   }
   $("#add-dialog").close();
-  toast(`Added ${id}`);
+  toast(`Added ${created.name}`);
   announceChange();
-  openPanel(id, null);
+  openPanel(created.id, null);
 }
 
 export function setupAddDialog() {
@@ -107,5 +99,5 @@ export function setupAddDialog() {
   $("#add-form").addEventListener("submit", submit);
   $("#profile-search").addEventListener("input", renderProfiles);
   for (const id of ["#add-close", "#add-cancel"]) $(id).addEventListener("click", () => $("#add-dialog").close());
-  $("#add-id").addEventListener("input", showError.bind(null, ""));
+  $("#add-name").addEventListener("input", () => showError(""));
 }

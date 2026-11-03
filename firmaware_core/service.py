@@ -6,6 +6,8 @@ call re-reads ``devices.json`` and ``state.json`` and writes under a file lock.
 from __future__ import annotations
 
 import copy
+import re
+import unicodedata
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -70,6 +72,28 @@ def mark_installed_latest(
     latest = max(discovered, key=version_sort_key)
     entry["installed_version"] = latest
     return latest
+
+
+def slugify(text: str) -> str:
+    """A technical ID base from a name: ``[a-z0-9._-]``, starting with a letter or digit."""
+    text = text.replace("ß", "ss")
+    ascii_text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
+    slug = re.sub(r"[^a-z0-9._-]+", "-", ascii_text.lower())
+    slug = re.sub(r"-{2,}", "-", slug).strip("-._")[:40].strip("-._")
+    return slug if slug and slug[0].isalnum() else "entry"
+
+
+def unique_entry_id(base: str, taken: set[str]) -> str:
+    """``base``, or ``base-2``, ``base-3``, ... until it is not in ``taken``."""
+    candidate, number = base, 2
+    while candidate in taken:
+        candidate = f"{base}-{number}"
+        number += 1
+    return candidate
+
+
+def _name_key(name: str) -> str:
+    return name.strip().casefold()
 
 
 def format_check_summary(result: Any, status: Any) -> str:
@@ -216,9 +240,12 @@ class Workspace:
                     raise ServiceError("Field 'installed_version' is invalid")
                 set_installed_version(candidate, value)
             try:
-                resolve_device(candidate, self.profiles_dir)
+                resolved = resolve_device(candidate, self.profiles_dir)
             except ValueError as error:
                 raise ServiceError(str(error)) from None
+            if "name" in changes:
+                index = entries.index(entry)
+                self._require_free_name(entries, resolved.get("name") or resolved["id"], skip=index)
             entry.clear()
             entry.update(candidate)
 
@@ -240,40 +267,106 @@ class Workspace:
 
         return self._mutate(change)
 
-    def add_entry(self, profile_id: str, entry_id: str, name: str | None = None) -> None:
-        """Add a profile-based entry at the end of the list."""
+    def _display_name(self, entry: Mapping[str, Any]) -> str:
+        """The name an entry is shown under: local name, else profile name, else ID."""
+        resolved, _ = self._resolve(entry)
+        return str(resolved.get("name") or resolved.get("id") or "")
+
+    def _taken_names(
+        self, entries: Sequence[Mapping[str, Any]], skip: int | None = None
+    ) -> set[str]:
+        return {
+            _name_key(self._display_name(entry))
+            for index, entry in enumerate(entries)
+            if index != skip
+        }
+
+    def _require_free_name(
+        self, entries: Sequence[Mapping[str, Any]], name: str, skip: int | None = None
+    ) -> None:
+        if _name_key(name) in self._taken_names(entries, skip):
+            raise ConflictError(f"Name '{name.strip()}' is already used")
+
+    @staticmethod
+    def _checked_name(name: Any) -> str | None:
+        if name is None:
+            return None
+        if not isinstance(name, str):
+            raise ServiceError("Field 'name' is invalid")
+        return name.strip() or None
+
+    @staticmethod
+    def _checked_id(entry_id: Any) -> str | None:
+        if entry_id is None:
+            return None
         if not isinstance(entry_id, str) or not PROFILE_ID_PATTERN.fullmatch(entry_id):
             raise ServiceError("ID must match [a-z0-9][a-z0-9._-]*")
+        return entry_id
+
+    def add_entry(
+        self, profile_id: str, name: str | None = None, entry_id: str | None = None
+    ) -> str:
+        """Add a profile-based entry at the end of the list and return its ID.
+
+        The name defaults to the profile name and must not be used by another entry.
+        The ID is generated from the name unless one is given.
+        """
+        name = self._checked_name(name)
+        entry_id = self._checked_id(entry_id)
         try:
-            load_profile(profile_id, self.profiles_dir)
+            profile = load_profile(profile_id, self.profiles_dir)
         except ValueError as error:
             raise ServiceError(str(error)) from None
+        shown = name or profile["name"]
 
-        def change(entries: list[dict[str, Any]]) -> None:
-            if any(entry.get("id") == entry_id for entry in entries):
+        def change(entries: list[dict[str, Any]]) -> str:
+            taken_ids = {entry.get("id") for entry in entries}
+            if entry_id is not None and entry_id in taken_ids:
                 raise ConflictError(f"ID '{entry_id}' already exists")
-            entry: dict[str, Any] = {"id": entry_id, "profile": profile_id}
-            if name and name.strip():
-                entry["name"] = name.strip()
+            self._require_free_name(entries, shown)
+            new_id = entry_id or unique_entry_id(slugify(shown), taken_ids)
+            entry: dict[str, Any] = {"id": new_id, "profile": profile_id}
+            if name and name != profile["name"]:
+                entry["name"] = name
             entries.append(entry)
+            return new_id
 
-        self._mutate(change)
+        return self._mutate(change)
 
-    def duplicate_entry(self, entry_id: str, new_id: str) -> None:
-        """Copy an entry below the original; the copy has no installed version."""
-        if not isinstance(new_id, str) or not PROFILE_ID_PATTERN.fullmatch(new_id):
-            raise ServiceError("ID must match [a-z0-9][a-z0-9._-]*")
+    def duplicate_entry(
+        self, entry_id: str, name: str | None = None, new_id: str | None = None
+    ) -> str:
+        """Copy an entry below the original and return the new ID.
 
-        def change(entries: list[dict[str, Any]]) -> None:
+        The copy has no installed version. Without a name it is called
+        ``<name> (copy)``, ``<name> (copy 2)``, ... The ID is generated from the name.
+        """
+        name = self._checked_name(name)
+        new_id = self._checked_id(new_id)
+
+        def change(entries: list[dict[str, Any]]) -> str:
             index = self._find(entries, entry_id)
-            if any(entry.get("id") == new_id for entry in entries):
+            taken_ids = {entry.get("id") for entry in entries}
+            if new_id is not None and new_id in taken_ids:
                 raise ConflictError(f"ID '{new_id}' already exists")
+            taken_names = self._taken_names(entries)
+            if name is not None:
+                self._require_free_name(entries, name)
+                chosen = name
+            else:
+                base = self._display_name(entries[index])
+                chosen, number = f"{base} (copy)", 2
+                while _name_key(chosen) in taken_names:
+                    chosen = f"{base} (copy {number})"
+                    number += 1
             clone = copy.deepcopy(entries[index])
-            clone["id"] = new_id
+            clone["id"] = new_id or unique_entry_id(slugify(chosen), taken_ids)
+            clone["name"] = chosen
             clone.pop("installed_version", None)
             entries.insert(index + 1, clone)
+            return clone["id"]
 
-        self._mutate(change)
+        return self._mutate(change)
 
     def delete_entry(self, entry_id: str) -> None:
         """Remove an entry; its record in state.json is kept, as before."""

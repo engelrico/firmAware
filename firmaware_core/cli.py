@@ -8,7 +8,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from .checking import name_column_width
+from .checking import display_name, name_column_width
 from .constants import (
     CATEGORY_DISPLAY_NAMES,
     CATEGORY_ORDER,
@@ -108,20 +108,38 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--device",
         "-d",
         type=str,
-        metavar="ID",
-        help="Check or show only the entry with this ID",
+        metavar="NAME",
+        help="Check or show only the entry with this name (or ID)",
     )
     parser.add_argument(
         "device_id",
         type=str,
-        metavar="ID",
+        metavar="NAME",
         nargs="?",
-        help="ID of the entry to check or show (shortcut for --device)",
+        help="Name of the entry to check or show (shortcut for --device)",
     )
     args = parser.parse_args(argv)
     if (args.host is not None or args.port is not None) and not args.serve:
         parser.error("--host and --port require --serve")
     return args
+
+
+def find_entries(devices: Sequence[Mapping[str, Any]], text: str) -> list[Mapping[str, Any]]:
+    """The entry an ID or name refers to: an exact ID, else a name (any case).
+
+    Raises ``ValueError`` if nothing matches or the name is ambiguous.
+    """
+    by_id = [device for device in devices if device["id"] == text]
+    if by_id:
+        return by_id
+    wanted = text.strip().casefold()
+    by_name = [device for device in devices if display_name(device).strip().casefold() == wanted]
+    if not by_name:
+        raise ValueError(f"No entry '{text}'")
+    if len(by_name) > 1:
+        options = ", ".join(f"{device['id']} ({display_name(device)})" for device in by_name)
+        raise ValueError(f"Several entries are named '{text}'; use the ID: {options}")
+    return by_name
 
 
 def run(args: argparse.Namespace) -> int:
@@ -167,11 +185,11 @@ def run(args: argparse.Namespace) -> int:
         args.device = args.device_id
 
     if args.device:
-        matching = [device for device in devices if device["id"] == args.device]
-        if not matching:
-            print(f"Configuration error: No entry with ID '{args.device}'", file=sys.stderr)
+        try:
+            devices = find_entries(devices, args.device)
+        except ValueError as error:
+            print(f"Configuration error: {error}", file=sys.stderr)
             return 1
-        devices = matching
 
     if args.status:
         if not args.quiet:

@@ -60,13 +60,9 @@
           <legend class="sr-only">Device type</legend>
         </fieldset>
         <div class="field">
-          <label for="add-id">ID</label>
-          <input id="add-id" type="text" pattern="[a-z0-9][a-z0-9._-]*" required placeholder="e.g. tolino-bedroom">
-          <p class="hint">Lower-case letters, digits, dot, dash, underscore. Must be unique.</p>
-        </div>
-        <div class="field">
-          <label for="add-name">Name (optional)</label>
-          <input id="add-name" type="text" placeholder="Defaults to the device type name">
+          <label for="add-name">Name</label>
+          <input id="add-name" type="text" required placeholder="e.g. Tolino (bedroom)">
+          <p class="hint">How this device is shown. Each name can be used once.</p>
         </div>
         <p id="add-error" class="form-error" role="alert" hidden></p>
       </div>
