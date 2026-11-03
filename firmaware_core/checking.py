@@ -28,6 +28,29 @@ def compare_versions(
     return known, new_versions
 
 
+def source_key(device: Mapping[str, Any]) -> tuple[str, str]:
+    """Where the known versions of an entry live in the state.
+
+    Devices of one type share their versions: profile-based entries use the profile
+    (``profiles``), direct entries are their own source (``devices``).
+    """
+    profile = device.get("profile")
+    if isinstance(profile, str) and profile:
+        return "profiles", profile
+    return "devices", device["id"]
+
+
+def stored_record(state: Mapping[str, Any], device: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    """The stored record (``last_checked``, ``discovered_at``) of an entry's source."""
+    section, key = source_key(device)
+    return (state.get(section) or {}).get(key)
+
+
+def source_name(device: Mapping[str, Any]) -> str:
+    """Name of an entry's source for messages: the device type for profile-based entries."""
+    return device.get("profile_name") or display_name(device)
+
+
 def display_name(device: Mapping[str, Any]) -> str:
     """Display name of a device; falls back to the ID."""
     return device.get("name", device["id"])
@@ -134,7 +157,7 @@ def check_device(
     cache: dict[tuple[str, str | None], str] | None = None,
 ) -> CheckResult:
     """Fetch an entry's source and compare it with the stored state."""
-    previous = state.get("devices", {}).get(device["id"])
+    previous = stored_record(state, device)
     try:
         versions = fetch_versions(device, cache)
         _, new_versions = compare_versions(versions, previous)
@@ -143,12 +166,13 @@ def check_device(
     return CheckResult(versions=versions, new_versions=new_versions, previous=previous)
 
 
-def record_check(state: dict[str, Any], device_id: str, result: CheckResult) -> None:
-    """Store the versions of a successful check in the state."""
+def record_check(state: dict[str, Any], device: Mapping[str, Any], result: CheckResult) -> None:
+    """Store the versions of a successful check in the state (once per source)."""
     previous = result.previous
     discovered = dict(previous.get("discovered_at") or {}) if previous else {}
     now = current_timestamp()
     for version in result.versions:
         if version not in discovered:
             discovered[version] = now
-    state["devices"][device_id] = {"last_checked": now, "discovered_at": discovered}
+    section, key = source_key(device)
+    state.setdefault(section, {})[key] = {"last_checked": now, "discovered_at": discovered}

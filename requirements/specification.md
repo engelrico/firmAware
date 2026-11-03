@@ -351,7 +351,7 @@ A profile describes a device **type**; an entry describes one concrete **device*
 - It is allowed on profile-based and direct entries and is a configuration error inside a profile file or if it is not a non-empty string.
 - **Comparison:** the latest known version is `max(discovered_at, key=version_sort_key)`. The installed version is `current` if its sort key is greater than or equal to the latest one, `outdated` if lower, `unknown` if nothing has been discovered yet, and not set if the field is missing.
 - Sources that publish several release tracks (for example Apple iOS 18.x and 26.x) report a device on an older track as `outdated`, because the comparison uses the highest label only.
-- Entries of the same type share one fetch per `--check` run (cache key: source URL and encoding); failed fetches are not cached.
+- Entries of the same type share one check per run: the source is fetched, compared, and recorded once, and every entry reports the shared result and compares its own installed version. Sources shared by different profiles or direct entries still share one fetch per run (cache key: source URL and encoding); failed fetches are not cached.
 
 ## 5. State: state.json
 
@@ -385,7 +385,25 @@ Example after successful check:
 }
 ```
 
-- `last_checked`: Time of the last **successful** entry check, in local time zone with UTC offset and second precision. Not a timestamp of a failed attempt.
+Profile-based entries share one record per device type under `profiles`, keyed by the profile ID; direct entries (without a profile) are their own source and stay under `devices`, keyed by the local entry ID:
+
+```json
+{
+  "devices": {
+    "my-router": { "last_checked": "2026-10-11T18:00:00+02:00", "discovered_at": { "2.10": "2026-10-11T18:00:00+02:00" } }
+  },
+  "profiles": {
+    "apple.ios": {
+      "last_checked": "2026-10-11T18:00:05+02:00",
+      "discovered_at": { "26.0.1": "2026-09-20T10:00:00+02:00", "26.1": "2026-10-11T18:00:05+02:00" }
+    }
+  }
+}
+```
+
+The versions belong to the device type, only `installed_version` belongs to a device: two iPhones with the profile `apple.ios` share one version list, one baseline, and one "new" message, and each compares its own installed version against it. The `profiles` section is optional; a state without it is valid.
+
+- `last_checked`: Time of the last **successful** check of the source, in local time zone with UTC offset and second precision. Not a timestamp of a failed attempt.
 - `discovered_at`: Mapping of every recognized version label to the timestamp when it was first discovered by a check.
 - Versions disappeared from the source remain known.
 - No longer configured entries are not automatically removed from the state.
@@ -394,9 +412,11 @@ Example after successful check:
 
 **Migration:** A legacy state file containing `known_versions` (a list) is automatically migrated to `discovered_at` on the first load; the `last_checked` timestamp is used as the discovery time for all existing versions.
 
-The state file is managed by the program. Stored under `state["devices"][device["id"]]`, where `device["id"]` is always the **local** entry ID (not the profile ID). Profile ID and local entry ID are separate: the profile ID describes the shared source, the local ID is the state key. When switching an entry to a profile, with the same local ID the same stored version state is retained; no migration is needed. Multiple local entries may reference the same profile; local IDs must be unique. The state format itself remains unchanged.
+**Migration to per-profile records:** States written before the `profiles` section hold one record per profile-based entry under `devices`. On the next `--check` (and on the first check in the web interface) these records are folded into one record per profile: the versions of all entries are united, the earliest discovery time of each version wins, and the latest `last_checked` is kept. The folded entry records are removed, records of entries that no longer exist stay untouched. Before the first rewrite the old file is copied to `<state file>.bak`; an existing backup is never overwritten. `--status` and reading in the web interface apply the same folding in memory without writing the file.
 
-If the state file is deleted or an entry ID is changed, a new initialization begins for the affected entry. When changing the source or extraction logic, a conscious handling of the previous state is required; there is no automatic migration.
+The state file is managed by the program. The record of an entry is found by `source_key()`: `state["profiles"][<profile ID>]` for profile-based entries, `state["devices"][<local entry ID>]` for direct entries. Multiple local entries may reference the same profile and then share the record; local IDs must be unique. Switching a direct entry to a profile starts from the profile's record (or a new baseline); the old entry record is kept but no longer used.
+
+If the state file is deleted, or the ID of a direct entry is changed, a new initialization begins for the affected source. Renaming the ID of a profile-based entry keeps the versions, because they belong to the profile. When changing the source or extraction logic, a conscious handling of the previous state is required; there is no automatic migration.
 
 ## 6. Check Run Flow
 
@@ -459,6 +479,8 @@ Regular results go to stdout, errors to stderr. Output is compact, one line per 
 <Entry>  no changes                   # no new versions
 <Entry>  no changes  outdated: installed 5.1.2, latest 5.2.0   # installed version is behind
 ```
+
+Devices of one type print the same summary (`Baseline`, `new:`, `no changes`, or the error) because they share the check; only the `outdated:` suffix differs per device.
 
 The `outdated:` suffix follows any of the three summaries and appears only for entries with `installed_version` that is behind the latest known version. It is suppressed by `--quiet`.
 
@@ -625,7 +647,7 @@ Raspberry Pi). It uses only the standard library (`smtplib`,
   listed in an "Outdated devices" section, and the subject gets an
   `<n> outdated` part. They never trigger a mail by themselves, so a device
   that stays outdated does not cause a mail on every run. Under "New versions",
-  an entry shows its installed version.
+  each new version is listed once per device type (named after the profile), followed by the installed version of every device of that type. Errors are counted and listed once per source, too.
 - A manual abort via `Ctrl+C` is caught cleanly: a short notice is printed to
   `stderr` and the process exits with code `130`. It never triggers a
   notification.

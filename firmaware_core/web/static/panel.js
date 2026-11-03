@@ -94,6 +94,7 @@ function renderPanel(entry) {
     fact("Installed", el("span", { class: "mono", text: dash(entry.installed_version) })),
     entry.installed_state ? fact("State", stateBadge(entry)) : null,
     fact("Known versions", String(entry.known_versions)),
+    entry.kind === "profile" && entry.type_devices > 1 ? fact("Devices of this type", String(entry.type_devices)) : null,
     entry.kind === "direct" ? fact("Source type", dash(entry.source_type)) : null,
     entry.kind === "direct" ? fact("Source URL", dash(entry.source_url)) : null,
   ].filter(Boolean);
@@ -175,6 +176,11 @@ function renderPanel(entry) {
   );
 
   body.append(el("h3", { text: "Version history" }));
+  if (entry.kind === "profile" && entry.type_devices > 1) {
+    body.append(
+      el("p", { class: "muted", text: `Shared by all ${entry.type_devices} devices of this type; only the installed version is per device.` }),
+    );
+  }
   if (entry.history.length === 0) {
     body.append(el("p", { class: "muted", text: "No known versions yet. Run a check first." }));
   } else {

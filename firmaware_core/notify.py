@@ -135,8 +135,11 @@ def build_notification(
             lines.append(f"  {change['name']}")
             for version in change.get("versions") or ():
                 lines.append(f"    new: {version}")
-            if change.get("installed"):
-                lines.append(f"    installed: {change['installed']}")
+            for device in change.get("devices") or ():
+                if device["name"] == change["name"]:
+                    lines.append(f"    installed: {device['installed']}")
+                else:
+                    lines.append(f"    {device['name']}: installed {device['installed']}")
     if outdated:
         if lines:
             lines.append("")

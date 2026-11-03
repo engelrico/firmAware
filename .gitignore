@@ -6,3 +6,4 @@ devices.json
 state.json
 state.json.tmp
 *.lock
+*.bak

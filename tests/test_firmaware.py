@@ -730,7 +730,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("Baseline (2): 3.0808.0, 3.0910.0", out)
         self.assertEqual(
-            sorted(json.loads(self.state_path.read_text())["devices"]["coros-dura"]["discovered_at"]),
+            sorted(json.loads(self.state_path.read_text())["profiles"]["coros.dura"]["discovered_at"]),
             ["3.0808.0", "3.0910.0"],
         )
 
@@ -1818,6 +1818,217 @@ class WebServerTests(unittest.TestCase):
         self.assertIn("token is required", err.getvalue())
 
 
+class SharedSourceTests(unittest.TestCase):
+    """Devices of one type (one profile) share their versions; only the installed version differs."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = Path(self._tmp.name)
+        self.profiles_dir = self.root / "profiles"
+        self.profiles_dir.mkdir()
+        (self.profiles_dir / "t.os.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 2,
+                    "id": "t.os",
+                    "name": "Test Phone OS",
+                    "category": "operating_system",
+                    "source_type": "text",
+                    "source_url": "https://example.com/os",
+                    "version_pattern": r"v[0-9]+",
+                }
+            ),
+            encoding="utf-8",
+        )
+        self.devices = self.root / "devices.json"
+        self.state = self.root / "state.json"
+        self.notify = self.root / "notify.json"
+        self.notify.write_text(
+            json.dumps(
+                {"smtp_host": "h", "smtp_user": "u", "smtp_password": "p", "mail_to": ["me@example.com"]}
+            ),
+            encoding="utf-8",
+        )
+        self.smtp = mock.MagicMock()
+        self.smtp.__enter__ = mock.MagicMock(return_value=self.smtp)
+        self.smtp.__exit__ = mock.MagicMock(return_value=False)
+        patcher = mock.patch.object(smtplib, "SMTP", return_value=self.smtp)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        fw.save_devices_file(
+            self.devices,
+            {
+                "devices": [
+                    {"id": "phone-a", "profile": "t.os", "name": "Phone A", "installed_version": "v1"},
+                    {"id": "phone-b", "profile": "t.os", "name": "Phone B", "installed_version": "v3"},
+                ]
+            },
+        )
+
+    def run_cli(self, content, extra=None):
+        fetched = []
+
+        def fake_fetch(device):
+            fetched.append(device["source_url"])
+            if isinstance(content, Exception):
+                raise content
+            return content
+
+        args = [
+            "--devices", str(self.devices), "--state", str(self.state),
+            "--profiles-dir", str(self.profiles_dir), "--notify-config", str(self.notify),
+        ] + (extra or [])
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.object(fw_extract, "fetch_source", fake_fetch):
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                code = fw.main(args)
+        return code, out.getvalue(), err.getvalue(), fetched
+
+    def stored(self):
+        return json.loads(self.state.read_text())
+
+    def test_one_record_per_type_and_one_fetch(self):
+        code, out, _, fetched = self.run_cli("v1 v2 v3")
+        self.assertEqual(code, 0)
+        self.assertEqual(len(fetched), 1)
+        state = self.stored()
+        self.assertEqual(sorted(state["profiles"]["t.os"]["discovered_at"]), ["v1", "v2", "v3"])
+        self.assertEqual(state.get("devices", {}), {})
+        lines = [line for line in out.splitlines() if line.startswith("Phone")]
+        self.assertEqual(len(lines), 2)
+        self.assertIn("outdated: installed v1, latest v3", next(l for l in lines if l.startswith("Phone A")))
+        self.assertNotIn("outdated", next(l for l in lines if l.startswith("Phone B")))
+
+    def test_a_new_version_is_reported_once_per_type(self):
+        self.run_cli("v1 v2 v3")
+        code, out, _, _ = self.run_cli("v1 v2 v3 v4", extra=["--notify"])
+        self.assertEqual(code, 0)
+        message = self.smtp.send_message.call_args[0][0]
+        self.assertEqual(message["Subject"], "firmAware: 1 new version found, 2 outdated")
+        body = message.get_content()
+        self.assertEqual(body.count("new: v4"), 1)
+        self.assertIn("Test Phone OS", body)
+        self.assertIn("Phone A: installed v1", body)
+        self.assertIn("Phone B: installed v3", body)
+
+    def test_a_failing_source_is_one_warning(self):
+        code, _, err, _ = self.run_cli(ValueError("boom"), extra=["--notify"])
+        self.assertEqual(code, 1)
+        self.assertEqual(err.count("Check error: boom"), 2)  # one line per device
+        message = self.smtp.send_message.call_args[0][0]
+        self.assertEqual(message["Subject"], "firmAware: 1 warning")
+        self.assertEqual(message.get_content().count("boom"), 1)
+
+    def test_second_device_gets_no_baseline_of_its_own(self):
+        self.run_cli("v1 v2")
+        fw.save_devices_file(
+            self.devices,
+            {"devices": [
+                {"id": "phone-a", "profile": "t.os"},
+                {"id": "phone-b", "profile": "t.os"},
+                {"id": "phone-c", "profile": "t.os", "name": "Phone C", "installed_version": "v2"},
+            ]},
+        )
+        _, out, _, _ = self.run_cli("v1 v2")
+        line = next(l for l in out.splitlines() if l.startswith("Phone C"))
+        self.assertIn("no changes", line)
+        self.assertNotIn("Baseline", line)
+
+    # --- migration of the former per-entry records ---------------------------
+
+    def legacy_state(self):
+        self.state.write_text(
+            json.dumps(
+                {
+                    "devices": {
+                        "phone-a": {"last_checked": "2026-10-01T10:00:00+02:00",
+                                    "discovered_at": {"v1": "2026-09-01T10:00:00+02:00", "v2": "2026-10-01T10:00:00+02:00"}},
+                        "phone-b": {"last_checked": "2026-10-05T10:00:00+02:00",
+                                    "discovered_at": {"v1": "2026-08-01T10:00:00+02:00", "v3": "2026-10-05T10:00:00+02:00"}},
+                        "removed-entry": {"last_checked": "t", "discovered_at": {"x": "t"}},
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    def test_migrate_state_merges_versions_and_keeps_other_records(self):
+        self.legacy_state()
+        state = json.loads(self.state.read_text())
+        entries = json.loads(self.devices.read_text())["devices"]
+        self.assertTrue(fw.migrate_state(state, entries))
+        record = state["profiles"]["t.os"]
+        self.assertEqual(sorted(record["discovered_at"]), ["v1", "v2", "v3"])
+        self.assertEqual(record["discovered_at"]["v1"], "2026-08-01T10:00:00+02:00")  # earliest wins
+        self.assertEqual(record["last_checked"], "2026-10-05T10:00:00+02:00")  # latest check
+        self.assertEqual(list(state["devices"]), ["removed-entry"])
+        self.assertFalse(fw.migrate_state(state, entries))  # nothing left to move
+
+    def test_check_migrates_and_backs_up_once(self):
+        self.legacy_state()
+        original = self.state.read_text()
+        code, out, _, _ = self.run_cli("v1 v2 v3")
+        self.assertEqual(code, 0)
+        self.assertIn("no changes", out)
+        backup = self.state.with_name("state.json.bak")
+        self.assertEqual(backup.read_text(), original)
+        state = self.stored()
+        self.assertEqual(sorted(state["profiles"]["t.os"]["discovered_at"]), ["v1", "v2", "v3"])
+        self.assertEqual(list(state["devices"]), ["removed-entry"])
+        self.run_cli("v1 v2 v3")
+        self.assertEqual(backup.read_text(), original)  # an existing backup is never overwritten
+
+    def test_status_shows_migrated_data_without_writing(self):
+        self.legacy_state()
+        original = self.state.read_text()
+        code, out, _, fetched = self.run_cli("unused", extra=["--status"])
+        self.assertEqual(code, 0)
+        self.assertEqual(fetched, [])
+        self.assertEqual(self.state.read_text(), original)
+        self.assertFalse(self.state.with_name("state.json.bak").exists())
+        self.assertIn("outdated", next(l for l in out.splitlines() if l.startswith("phone-a")))
+
+    # --- service layer ---------------------------------------------------------
+
+    def test_service_shares_history_and_checks_per_type(self):
+        ws = fw_service.Workspace(self.devices, self.state, self.profiles_dir)
+        with mock.patch.object(fw_extract, "fetch_source", return_value="v1 v2 v3") as fetch:
+            results = ws.check()
+        self.assertEqual(fetch.call_count, 1)
+        self.assertEqual([r["id"] for r in results], ["phone-a", "phone-b"])
+        self.assertTrue(all(r["status"] == "ok" for r in results))
+        views = {v["id"]: v for v in ws.entries()}
+        self.assertEqual(views["phone-a"]["latest_version"], views["phone-b"]["latest_version"])
+        self.assertEqual(views["phone-a"]["type_devices"], 2)
+        self.assertEqual(views["phone-a"]["installed_state"], "outdated")
+        self.assertEqual(views["phone-b"]["installed_state"], "current")
+        self.assertEqual(
+            [h["version"] for h in ws.entry("phone-b")["history"]],
+            [h["version"] for h in ws.entry("phone-a")["history"]],
+        )
+        self.assertEqual(list(self.stored()["profiles"]), ["t.os"])
+
+    def test_service_migrates_on_check_not_on_read(self):
+        self.legacy_state()
+        ws = fw_service.Workspace(self.devices, self.state, self.profiles_dir)
+        original = self.state.read_text()
+        views = {v["id"]: v for v in ws.entries()}
+        self.assertEqual(views["phone-a"]["known_versions"], 3)
+        self.assertEqual(self.state.read_text(), original)
+        with mock.patch.object(fw_extract, "fetch_source", return_value="v1 v2 v3"):
+            ws.check(["phone-a"])
+        self.assertTrue(self.state.with_name("state.json.bak").exists())
+        self.assertIn("profiles", self.stored())
+
+    def test_service_error_applies_to_every_device_of_the_type(self):
+        ws = fw_service.Workspace(self.devices, self.state, self.profiles_dir)
+        with mock.patch.object(fw_extract, "fetch_source", side_effect=ValueError("boom")):
+            results = ws.check()
+        self.assertEqual([r["status"] for r in results], ["error", "error"])
+        self.assertEqual({r["summary"] for r in results}, {"Check error: boom"})
+
+
 class SourceTypeRegistryTests(unittest.TestCase):
     def test_registry_defines_supported_types(self):
         self.assertEqual(fw.SUPPORTED_SOURCE_TYPES, frozenset(fw_sources.SOURCE_TYPES))
@@ -1871,7 +2082,7 @@ class CheckResultTests(unittest.TestCase):
     def test_record_check_keeps_known_timestamps(self):
         state = {"devices": {"x": {"last_checked": "t", "discovered_at": {"1.0": "old"}}}}
         result = self.check(["1.0", "1.1"], state)
-        fw.record_check(state, "x", result)
+        fw.record_check(state, self.DEVICE, result)
         discovered = state["devices"]["x"]["discovered_at"]
         self.assertEqual(discovered["1.0"], "old")
         self.assertIn("1.1", discovered)

@@ -20,7 +20,15 @@ from .notify import build_notification, format_failure, notify_check_failed, sen
 from .profiles import resolve_devices
 from .report import print_status, process_device
 from .service import Workspace
-from .state import load_state, read_json, update_state, validate_config
+from .state import (
+    backup_state_file,
+    load_state,
+    migrate_state,
+    read_json,
+    state_changes,
+    update_state,
+    validate_config,
+)
 from .web.server import serve
 
 
@@ -147,6 +155,8 @@ def run(args: argparse.Namespace) -> int:
         state_existed = args.state.exists()
         state = load_state(args.state)
         raw_devices = validate_config(config, state)
+        stored_before = copy.deepcopy(state)
+        migrated = migrate_state(state, raw_devices)
         devices = resolve_devices(raw_devices, args.profiles_dir)
     except (OSError, ValueError, KeyError, TypeError) as error:
         print(f"Configuration error: {error}", file=sys.stderr)
@@ -173,13 +183,13 @@ def run(args: argparse.Namespace) -> int:
             )
         return 0
 
-    stored_before = copy.deepcopy(state["devices"])
     failed = False
     width = name_column_width(devices)
-    changes: list[Mapping[str, Any]] = []
+    changes: list[dict[str, Any]] = []
     errors: list[Mapping[str, Any]] = []
     outdated: list[Mapping[str, Any]] = []
     cache: dict[tuple[str, str | None], str] = {}
+    sources: dict[tuple[str, str], dict[str, Any]] = {}
 
     grouped: dict[str, list[Mapping[str, Any]]] = {category: [] for category in CATEGORY_ORDER}
     other: list[Mapping[str, Any]] = []
@@ -207,6 +217,7 @@ def run(args: argparse.Namespace) -> int:
                 errors=errors,
                 outdated=outdated,
                 cache=cache,
+                sources=sources,
                 quiet=args.quiet,
             ):
                 failed = True
@@ -225,17 +236,16 @@ def run(args: argparse.Namespace) -> int:
                 errors=errors,
                 outdated=outdated,
                 cache=cache,
+                sources=sources,
                 quiet=args.quiet,
             ):
                 failed = True
 
-    changed = {
-        entry_id: record
-        for entry_id, record in state["devices"].items()
-        if record != stored_before.get(entry_id)
-    }
+    changed, changed_profiles, removed = state_changes(stored_before, state)
     try:
-        update_state(args.state, changed)
+        if migrated and state_existed:
+            backup_state_file(args.state)
+        update_state(args.state, changed, profiles=changed_profiles, remove_devices=removed)
     except (OSError, ValueError) as error:
         print(f"Storage error: {error}", file=sys.stderr)
         notify_check_failed(args, f"Storage error: {error}")

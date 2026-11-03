@@ -145,6 +145,7 @@ def resolve_device(device: Mapping[str, Any], profiles_dir: Path) -> dict[str, A
         resolved = dict(profile)
         resolved["id"] = device_id
         resolved["profile"] = profile_id
+        resolved["profile_name"] = profile["name"]
         if "name" in device:
             local_name = device.get("name")
             if not isinstance(local_name, str) or not local_name.strip():

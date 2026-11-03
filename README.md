@@ -146,7 +146,8 @@ different IDs. Record what is installed on each with `installed_version`:
 `outdated`; `--check` adds `outdated: installed X, latest Y` to the entry's
 line; and a notification mail lists outdated devices (it is still only sent
 when there are new versions or warnings). Both entries share one fetch per
-run. The comparison uses the highest known version label; sources with
+run, and they share one version history, so a new version is reported once per
+type, not once per device. The comparison uses the highest known version label; sources with
 several release tracks may report devices on an older track as outdated.
 You can maintain the value in the web interface (*Installed version* or
 *Mark as updated to latest* in the details panel).
@@ -272,7 +273,13 @@ reference.
 ```json
 {
   "devices": {
-    "nanostation-m5-xm": {
+    "my-router": {
+      "last_checked": "2026-10-15T07:17:54+02:00",
+      "discovered_at": { "2.10": "2026-10-15T07:17:54+02:00" }
+    }
+  },
+  "profiles": {
+    "ubiquiti.nanostation-m5-xm": {
       "last_checked": "2026-10-15T07:17:54+02:00",
       "discovered_at": {
         "6.3.24": "2026-09-15T10:00:00+02:00",
@@ -287,8 +294,14 @@ reference.
 - `discovered_at`: maps every recognized version to the timestamp when it was
   first discovered by a check.
 - Versions that have disappeared from the source remain known.
-- Storage is keyed by the **local** entry ID, not the profile ID. When
-  switching to a profile, the same local version state is retained.
+- Versions belong to the device **type**: profile-based entries share one record
+  under `profiles`, keyed by the profile ID, so two devices of one type are
+  checked once and get one "new" message. Direct entries (no profile) are their
+  own source and stay under `devices`, keyed by the local entry ID.
+- Older state files are migrated automatically: the per-entry records of
+  profile-based entries are merged per profile (all known versions are kept,
+  the earliest discovery time wins). Before the first rewrite a copy is saved as
+  `state.json.bak`.
 
 The `--status` output groups entries by category (Firmware, Software,
 Operating System, Other) and shows an `ID` column per row, so the ID can be

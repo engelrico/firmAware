@@ -13,16 +13,27 @@ from typing import Any
 
 from .checking import (
     STATE_NOT_SET,
+    CheckResult,
     check_device,
     display_name,
     installed_status,
     record_check,
+    source_key,
+    stored_record,
     version_sort_key,
 )
 from .constants import PROFILE_ID_PATTERN
 from .locking import file_lock
 from .profiles import load_profile, resolve_device
-from .state import load_devices_file, load_state, save_devices_file, update_state
+from .state import (
+    backup_state_file,
+    load_devices_file,
+    load_state,
+    migrated_copy,
+    save_devices_file,
+    state_changes,
+    update_state,
+)
 
 EDITABLE_FIELDS = frozenset({"name", "enabled", "installed_version"})
 
@@ -95,24 +106,46 @@ class Workspace:
         except (ValueError, KeyError, TypeError) as error:
             return dict(entry), str(error)
 
+    def _state(
+        self, raw: Sequence[Mapping[str, Any]], persist: bool = False
+    ) -> dict[str, Any]:
+        """The state with per-entry records of profile-based entries folded per profile.
+
+        Reading never writes. With ``persist`` the migrated state is saved, after a
+        backup copy of the old file.
+        """
+        stored = load_state(self.state_path)
+        state, migrated = migrated_copy(stored, raw)
+        if migrated and persist:
+            devices, profiles, removed = state_changes(stored, state)
+            backup_state_file(self.state_path)
+            update_state(self.state_path, devices, profiles=profiles, remove_devices=removed)
+        return state
+
     def entries(self) -> list[dict[str, Any]]:
         """All entries in file order with their stored state, as shown by ``--status``."""
-        state = load_state(self.state_path)
-        stored = state.get("devices", {})
+        raw = self._raw_entries()
+        state = self._state(raw)
+        per_profile: dict[str, int] = {}
+        for entry in raw:
+            if isinstance(entry.get("profile"), str):
+                per_profile[entry["profile"]] = per_profile.get(entry["profile"], 0) + 1
         views = []
-        for entry in self._raw_entries():
+        for entry in raw:
             resolved, error = self._resolve(entry)
-            views.append(_entry_view(entry, resolved, stored.get(entry.get("id")) or {}, error))
+            view = _entry_view(entry, resolved, stored_record(state, entry) or {}, error)
+            view["type_devices"] = per_profile.get(entry.get("profile"), 1)
+            views.append(view)
         return views
 
     def entry(self, entry_id: str) -> dict[str, Any]:
-        """One entry with its version history (newest version first)."""
+        """One entry with the version history of its source (newest version first)."""
+        raw = self._raw_entries()
         view = next((v for v in self.entries() if v["id"] == entry_id), None)
         if view is None:
             raise NotFoundError(f"No entry with ID '{entry_id}'")
-        discovered = (load_state(self.state_path).get("devices", {}).get(entry_id) or {}).get(
-            "discovered_at"
-        ) or {}
+        entry = raw[self._find(raw, entry_id)]
+        discovered = (stored_record(self._state(raw), entry) or {}).get("discovered_at") or {}
         newest = max(discovered, key=lambda v: discovered[v]) if discovered else None
         view["history"] = [
             {"version": version, "discovered_at": discovered[version], "newest": version == newest}
@@ -193,9 +226,10 @@ class Workspace:
 
     def mark_installed_latest(self, entry_id: str) -> str:
         """Set the installed version of an entry to its highest known version."""
-        discovered = (load_state(self.state_path).get("devices", {}).get(entry_id) or {}).get(
-            "discovered_at"
-        )
+        raw = self._raw_entries()
+        discovered = (
+            stored_record(self._state(raw), raw[self._find(raw, entry_id)]) or {}
+        ).get("discovered_at")
 
         def change(entries: list[dict[str, Any]]) -> str:
             entry = entries[self._find(entries, entry_id)]
@@ -288,11 +322,12 @@ class Workspace:
         if started is not None:
             started(len(selected))
 
-        state = load_state(self.state_path)
+        state = self._state(raw, persist=True)
         cache: dict[tuple[str, str | None], str] = {}
+        sources: dict[tuple[str, str], CheckResult] = {}
         results: list[dict[str, Any]] = []
         for entry in selected:
-            result = self._check_one(entry, state, cache)
+            result = self._check_one(entry, state, cache, sources)
             results.append(result)
             if progress is not None:
                 progress(len(results), len(selected), result)
@@ -303,7 +338,9 @@ class Workspace:
         entry: Mapping[str, Any],
         state: dict[str, Any],
         cache: dict[tuple[str, str | None], str],
+        sources: dict[tuple[str, str], CheckResult],
     ) -> dict[str, Any]:
+        """Check one entry; devices of one type share a single check of their source."""
         entry_id = entry.get("id")
         resolved, error = self._resolve(entry)
         name = display_name(resolved) if "id" in resolved else str(entry_id)
@@ -312,21 +349,27 @@ class Workspace:
             return {**base, "status": "error", "summary": f"Configuration error: {error}", "error": error}
         if resolved.get("enabled") is False:
             return {**base, "status": "disabled", "summary": "[disabled]"}
-        result = check_device(resolved, state, cache)
+
+        key = source_key(resolved)
+        result = sources.get(key)
+        if result is None:
+            result = check_device(resolved, state, cache)
+            if result.ok:
+                record_check(state, resolved, result)
+                section, record_key = key
+                try:
+                    if section == "profiles":
+                        update_state(self.state_path, profiles={record_key: state[section][record_key]})
+                    else:
+                        update_state(self.state_path, {record_key: state[section][record_key]})
+                except (OSError, ValueError) as storage_error:
+                    result = CheckResult(error=f"Storage error: {storage_error}")
+            sources[key] = result
         if not result.ok:
-            return {
-                **base,
-                "status": "error",
-                "summary": f"Check error: {result.error}",
-                "error": result.error,
-            }
-        record_check(state, entry_id, result)
-        try:
-            update_state(self.state_path, {entry_id: state["devices"][entry_id]})
-        except (OSError, ValueError) as storage_error:
-            message = f"Storage error: {storage_error}"
-            return {**base, "status": "error", "summary": message, "error": message}
-        status = installed_status(resolved, state["devices"][entry_id]["discovered_at"])
+            message = result.error or ""
+            summary = message if message.startswith("Storage error") else f"Check error: {message}"
+            return {**base, "status": "error", "summary": summary, "error": message}
+        status = installed_status(resolved, stored_record(state, resolved)["discovered_at"])
         return {
             **base,
             "status": "ok",
