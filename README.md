@@ -329,7 +329,14 @@ python3 -m unittest discover -s tests -t .
 
 ```text
 firmAware/
-├── firmaware.py                              # fetch, extraction, comparison, profiles, CLI
+├── firmaware.py                              # command-line entry point (re-exports firmaware_core)
+├── firmaware_core/                           # implementation package
+│   ├── constants.py, errors.py               # shared constants and exceptions
+│   ├── fetch.py, extract.py                  # HTTP fetch and version extraction per source type
+│   ├── profiles.py                           # profile validation, loading, resolving
+│   ├── state.py, checking.py                 # state file, comparison, CheckResult
+│   ├── report.py, notify.py                  # terminal output, e-mail notification
+│   └── interactive.py, cli.py                # interactive manager, argument parsing and run
 ├── devices.template.json                     # starting point: one example per entry form
 ├── devices.json                              # personal device selection (git-ignored)
 ├── profiles/                                 # reusable device profiles

@@ -7,6 +7,7 @@ import io
 import json
 import re
 import shutil
+import smtplib
 import sys
 import tempfile
 import unittest
@@ -14,6 +15,8 @@ from pathlib import Path
 from unittest import mock
 
 import firmaware as fw
+from firmaware_core import checking as fw_checking
+from firmaware_core import extract as fw_extract
 
 
 class TextExtractionTests(unittest.TestCase):
@@ -177,7 +180,7 @@ class StateStorageTests(unittest.TestCase):
             encoding="utf-8",
         )
         out, err = io.StringIO(), io.StringIO()
-        with mock.patch.object(fw, "fetch_source", side_effect=AssertionError("no network")):
+        with mock.patch.object(fw_extract, "fetch_source", side_effect=AssertionError("no network")):
             with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
                 code = fw.main(
                     [
@@ -213,7 +216,7 @@ class StateStorageTests(unittest.TestCase):
         state = root / "state.json"
         state.write_text(json.dumps({"devices": {}}), encoding="utf-8")
         out, err = io.StringIO(), io.StringIO()
-        with mock.patch.object(fw, "fetch_source", side_effect=AssertionError("no network")):
+        with mock.patch.object(fw_extract, "fetch_source", side_effect=AssertionError("no network")):
             with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
                 code = fw.main(
                     [
@@ -569,14 +572,14 @@ class CliTests(unittest.TestCase):
             return versions_by_url[device["source_url"]]
 
         out, err = io.StringIO(), io.StringIO()
-        with mock.patch.object(fw, "fetch_source", fake_fetch):
+        with mock.patch.object(fw_extract, "fetch_source", fake_fetch):
             with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
                 code = fw.main(self._args(extra))
         return code, out.getvalue(), err.getvalue()
 
     def _run_status(self):
         out, err = io.StringIO(), io.StringIO()
-        with mock.patch.object(fw, "fetch_source", side_effect=AssertionError("no network")):
+        with mock.patch.object(fw_extract, "fetch_source", side_effect=AssertionError("no network")):
             with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
                 code = fw.main(self._args(["--status"]))
         return code, out.getvalue(), err.getvalue()
@@ -774,7 +777,7 @@ class CliTests(unittest.TestCase):
             ]
         )
         out, err = io.StringIO(), io.StringIO()
-        with mock.patch.object(fw, "fetch_source", side_effect=AssertionError("no network")):
+        with mock.patch.object(fw_extract, "fetch_source", side_effect=AssertionError("no network")):
             with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
                 code = fw.main(self._args())
         self.assertEqual(code, 1)
@@ -796,7 +799,7 @@ class CliTests(unittest.TestCase):
             "--profiles-dir",
             str(other),
         ]
-        with mock.patch.object(fw, "fetch_source", return_value="V 3.0910.0"):
+        with mock.patch.object(fw_extract, "fetch_source", return_value="V 3.0910.0"):
             with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
                 code = fw.main(args)
         self.assertEqual(code, 0)
@@ -821,7 +824,7 @@ class CliTests(unittest.TestCase):
         )
         out, err = io.StringIO(), io.StringIO()
         args = ["--devices", str(self.devices_path), "--state", str(self.state_path)]
-        with mock.patch.object(fw, "fetch_source", return_value="v1 v2"):
+        with mock.patch.object(fw_extract, "fetch_source", return_value="v1 v2"):
             with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
                 code = fw.main(args)
         self.assertEqual(code, 0)
@@ -1016,7 +1019,7 @@ class NotificationTests(unittest.TestCase):
         smtp = mock.MagicMock()
         smtp.__enter__ = mock.MagicMock(return_value=smtp)
         smtp.__exit__ = mock.MagicMock(return_value=False)
-        with mock.patch.object(fw.smtplib, "SMTP", return_value=smtp) as smtp_cls:
+        with mock.patch.object(smtplib, "SMTP", return_value=smtp) as smtp_cls:
             fw.send_email(config, "Subject line", "Body text")
         smtp_cls.assert_called_once_with("smtp.example.com", 587, timeout=fw.REQUEST_TIMEOUT_SECONDS)
         smtp.starttls.assert_called_once()
@@ -1042,7 +1045,7 @@ class NotificationTests(unittest.TestCase):
         smtp = mock.MagicMock()
         smtp.__enter__ = mock.MagicMock(return_value=smtp)
         smtp.__exit__ = mock.MagicMock(return_value=False)
-        with mock.patch.object(fw.smtplib, "SMTP_SSL", return_value=smtp) as smtp_cls:
+        with mock.patch.object(smtplib, "SMTP_SSL", return_value=smtp) as smtp_cls:
             fw.send_email(config, "S", "B")
         smtp_cls.assert_called_once_with("smtp.example.com", 465, timeout=fw.REQUEST_TIMEOUT_SECONDS)
         smtp.starttls.assert_not_called()
@@ -1081,7 +1084,7 @@ class NotificationCliTests(unittest.TestCase):
         self.smtp.__enter__ = mock.MagicMock(return_value=self.smtp)
         self.smtp.__exit__ = mock.MagicMock(return_value=False)
         self.smtp_patch = mock.patch.object(
-            fw.smtplib, "SMTP", return_value=self.smtp
+            smtplib, "SMTP", return_value=self.smtp
         )
         self.smtp_cls = self.smtp_patch.start()
         self.addCleanup(self.smtp_patch.stop)
@@ -1094,7 +1097,7 @@ class NotificationCliTests(unittest.TestCase):
             return versions_by_url[device["source_url"]]
 
         out, err = io.StringIO(), io.StringIO()
-        with mock.patch.object(fw, "fetch_source", fake_fetch):
+        with mock.patch.object(fw_extract, "fetch_source", fake_fetch):
             with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
                 code = fw.main(self._args(extra))
         return code, out.getvalue(), err.getvalue()
@@ -1181,7 +1184,7 @@ class NotificationCliTests(unittest.TestCase):
             ]
         )
         out, err = io.StringIO(), io.StringIO()
-        with mock.patch.object(fw, "fetch_source", failing_fetch):
+        with mock.patch.object(fw_extract, "fetch_source", failing_fetch):
             with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
                 code = fw.main(self._args(["--notify"]))
         self.assertEqual(code, 1)
@@ -1213,7 +1216,7 @@ class NotificationCliTests(unittest.TestCase):
                 }
             ]
         )
-        with mock.patch.object(fw, "fetch_source", side_effect=KeyboardInterrupt):
+        with mock.patch.object(fw_extract, "fetch_source", side_effect=KeyboardInterrupt):
             with contextlib.redirect_stdout(io.StringIO()):
                 with contextlib.redirect_stderr(io.StringIO()):
                     code = fw.main(self._args(["--notify"]))
@@ -1266,7 +1269,7 @@ class CheckResultTests(unittest.TestCase):
     DEVICE = {"id": "x", "name": "X", "category": "firmware"}
 
     def check(self, versions, state):
-        with mock.patch.object(fw, "fetch_versions", return_value=versions):
+        with mock.patch.object(fw_checking, "fetch_versions", return_value=versions):
             return fw.check_device(self.DEVICE, state)
 
     def test_baseline_has_no_new_versions(self):
@@ -1284,7 +1287,7 @@ class CheckResultTests(unittest.TestCase):
         self.assertEqual(list(state["devices"]["x"]["discovered_at"]), ["1.0"])
 
     def test_fetch_error_is_captured(self):
-        with mock.patch.object(fw, "fetch_versions", side_effect=ValueError("boom")):
+        with mock.patch.object(fw_checking, "fetch_versions", side_effect=ValueError("boom")):
             result = fw.check_device(self.DEVICE, {"devices": {}})
         self.assertFalse(result.ok)
         self.assertEqual(result.error, "boom")
@@ -1300,7 +1303,7 @@ class CheckResultTests(unittest.TestCase):
     def test_process_device_leaves_state_unchanged_on_error(self):
         state = {"devices": {}}
         errors = []
-        with mock.patch.object(fw, "fetch_versions", side_effect=ValueError("boom")):
+        with mock.patch.object(fw_checking, "fetch_versions", side_effect=ValueError("boom")):
             with contextlib.redirect_stderr(io.StringIO()):
                 ok = fw.process_device(self.DEVICE, state, 1, errors=errors, quiet=True)
         self.assertFalse(ok)

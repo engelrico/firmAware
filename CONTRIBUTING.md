@@ -77,7 +77,7 @@ Run the full test suite:
 python3 -m unittest discover -s tests -t .
 ```
 
-All tests must pass. If you change `firmaware.py`, add or update tests in `tests/test_firmaware.py` accordingly.
+All tests must pass. If you change `firmaware.py` or `firmaware_core/`, add or update tests in `tests/test_firmaware.py` accordingly.
 
 ### 5. Commit and Push
 
@@ -132,7 +132,7 @@ Each fact has one home:
 | CLI options and user-facing usage | `README.md` |
 | Conventions and working agreements | `AGENTS.md`, `CONTRIBUTING.md` (link, do not copy) |
 
-When changing `firmaware.py`, `profiles/*.json`, `devices.json`, `state.json`, or the CLI, update the specification and the README. All documentation must be in English.
+When changing `firmaware.py`, `firmaware_core/`, `profiles/*.json`, `devices.json`, `state.json`, or the CLI, update the specification and the README. All documentation must be in English.
 
 Before committing, verify:
 - The specification reflects any schema, CLI, output, or comparison changes

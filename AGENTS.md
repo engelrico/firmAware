@@ -9,7 +9,7 @@ This document helps AI agents working on the firmAware project understand the co
 **firmAware** checks public firmware/software sources for configured entries and reports previously unknown version labels in the terminal. Known versions are stored locally in `state.json`, so each run only highlights new entries.
 
 - **Tech stack:** Python 3 standard library only (no pip dependencies, no database)
-- **Entry point:** `firmaware.py`
+- **Entry point:** `firmaware.py` (thin wrapper); implementation in the `firmaware_core/` package
 - **Configuration:** `devices.json` (personal selection) + `profiles/*.json` (reusable fetch/extraction logic)
 - **State:** `state.json` (known versions + last check times, keyed by local entry ID)
 - **Tests:** `tests/test_firmaware.py` (unittest, no network access)
@@ -21,7 +21,9 @@ This document helps AI agents working on the firmAware project understand the co
 
 ```
 firmAware/
-├── firmaware.py              # fetch, extraction, comparison, profiles, CLI
+├── firmaware.py              # command-line entry point (re-exports firmaware_core)
+├── firmaware_core/           # implementation: fetch, extract, profiles, state, checking,
+│                             #   report, notify, interactive, cli (+ constants, errors)
 ├── devices.template.json     # starting point: one example per entry form
 ├── devices.json              # personal entry selection (git-ignored)
 ├── profiles/                 # reusable device profiles (*.json)
@@ -125,10 +127,10 @@ python3 -m unittest discover -s tests -t .
 3. **Always validate JSON** before writing profile files.
 4. **Never modify `devices.json` or `state.json` without explicit user confirmation.**
 5. **Profile IDs must match `[a-z0-9][a-z0-9._-]*`.** No uppercase, no slashes, no spaces.
-6. **Tests must pass** after any change to `firmaware.py` or `tests/test_firmaware.py`.
+6. **Tests must pass** after any change to `firmaware.py`, `firmaware_core/`, or `tests/test_firmaware.py`.
 7. **All UI text, error messages, and documentation must be in English.**
 8. **`devices.json` and `state.json` are local files.** Both are git-ignored and must never be committed; the repo ships `devices.template.json` (one example per entry form) and `state.template.json` (empty `{"devices": {}}`).
-9. **Documentation Sync:** Each fact lives in one place: schema, behavior, and output in `requirements/specification.md`; CLI options and user-facing usage in `README.md`. When changing `firmaware.py`, `profiles/*.json`, `devices.json`, `state.json`, or the CLI, update those two files. Update `AGENTS.md` and `CONTRIBUTING.md` only when conventions or workflow change; link to the specification instead of copying tables. All documentation must be in English.
+9. **Documentation Sync:** Each fact lives in one place: schema, behavior, and output in `requirements/specification.md`; CLI options and user-facing usage in `README.md`. When changing `firmaware.py`, `firmaware_core/`, `profiles/*.json`, `devices.json`, `state.json`, or the CLI, update those two files. Update `AGENTS.md` and `CONTRIBUTING.md` only when conventions or workflow change; link to the specification instead of copying tables. All documentation must be in English.
 
 ---
 

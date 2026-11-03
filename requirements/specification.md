@@ -9,7 +9,7 @@ firmAware checks public firmware/software sources for configured entries and rep
 
 The application is operated locally by the user and requires no dedicated cloud service. It observes published version lists. It does **not** check the firmware installed on a device and does **not** confirm that an update is available for a specific device.
 
-This specification describes the current state of `firmaware.py`, `devices.json`, `profiles/*.json`, `state.json`, and `tests/test_firmaware.py`. Entries can be configured directly or via reusable profiles. Future ideas are listed separately in section 12 and are not part of the implementation.
+This specification describes the current state of `firmaware.py`, `firmaware_core/`, `devices.json`, `profiles/*.json`, `state.json`, and `tests/test_firmaware.py`. Entries can be configured directly or via reusable profiles. Future ideas are listed separately in section 12 and are not part of the implementation.
 
 ## 2. Technical Foundation
 
@@ -26,7 +26,8 @@ This specification describes the current state of `firmaware.py`, `devices.json`
 
 | File | Purpose |
 |------|---------|
-| `firmaware.py` | Fetch, extraction, comparison, profile resolution, and storage |
+| `firmaware.py` | Command-line entry point; re-exports the `firmaware_core` package |
+| `firmaware_core/` | Implementation: `fetch`, `extract`, `profiles`, `state`, `checking`, `report`, `notify`, `interactive`, `cli`, plus `constants` and `errors` |
 | `devices.json` | Personal entry selection (direct or via profiles) |
 | `devices.template.json` | Tracked starting point with one example per entry form |
 | `profiles/*.json` | Reusable entry profiles (fetch and version extraction) |

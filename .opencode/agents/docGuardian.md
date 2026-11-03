@@ -13,7 +13,7 @@ When code changes are made that could affect documentation, verify that:
 ## Trigger Conditions
 
 The docGuardian should be consulted when any of the following files are modified:
-- `firmaware.py` — CLI behavior, output format, error messages, version sorting
+- `firmaware.py`, `firmaware_core/*.py` — CLI behavior, output format, error messages, version sorting
 - `profiles/*.json` — Schema version, category values, required fields
 - `devices.json` — Entry structure, profile references
 - `state.json` — State format
