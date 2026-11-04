@@ -37,7 +37,7 @@ from .state import (
     update_state,
 )
 
-EDITABLE_FIELDS = frozenset({"name", "enabled", "installed_version"})
+EDITABLE_FIELDS = frozenset({"name", "enabled", "installed_version", "device_url"})
 
 
 class ServiceError(Exception):
@@ -241,10 +241,20 @@ class Workspace:
                 if value is not None and not isinstance(value, str):
                     raise ServiceError("Field 'installed_version' is invalid")
                 set_installed_version(candidate, value)
+            if "device_url" in changes:
+                url = changes["device_url"]
+                if url is not None and not isinstance(url, str):
+                    raise ServiceError("Field 'device_url' is invalid")
+                if url and url.strip():
+                    candidate["device_url"] = url.strip()
+                else:
+                    candidate.pop("device_url", None)
             try:
                 resolved = resolve_device(candidate, self.profiles_dir)
             except ValueError as error:
                 raise ServiceError(str(error)) from None
+            if "device_url" in changes and resolved.get("device_url"):
+                candidate["device_url"] = resolved["device_url"]  # stored in its normalized form
             chosen = candidate.get("installed_version")
             if "installed_version" in changes and chosen and chosen != entry.get("installed_version"):
                 known = (stored_record(self._state(entries), entry) or {}).get("discovered_at") or {}
@@ -374,6 +384,7 @@ class Workspace:
             clone["id"] = new_id or unique_entry_id(slugify(chosen), taken_ids)
             clone["name"] = chosen
             clone.pop("installed_version", None)
+            clone.pop("device_url", None)  # another physical device has another address
             entries.insert(index + 1, clone)
             return clone["id"]
 
@@ -501,6 +512,9 @@ def _entry_view(
         "profile": raw.get("profile"),
         "enabled": resolved.get("enabled", True),
         "source_url": resolved.get("source_url"),
+        # Links come only from validated configuration.
+        "source_page": (resolved.get("source_page") or resolved.get("source_url")) if error is None else None,
+        "device_url": resolved.get("device_url") if error is None else None,
         "source_type": resolved.get("source_type"),
         "last_checked": stored.get("last_checked"),
         "latest_version": latest,

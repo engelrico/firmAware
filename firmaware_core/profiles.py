@@ -6,6 +6,7 @@ import json
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from .constants import PROFILE_CATEGORIES, PROFILE_ENTRY_FIELDS, PROFILE_ID_PATTERN, PROFILE_SCHEMA_VERSION
 from .fetch import validate_url_basic
@@ -16,6 +17,34 @@ def _validate_installed_version(value: Any, context: str) -> None:
     """Require a non-empty string for the user-maintained installed version."""
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{context}: Field 'installed_version' is invalid")
+
+
+MAX_LINK_LENGTH = 2048
+
+
+def _check_link(url: str, field: str, context: str) -> None:
+    """A link shown in the web interface: http(s), a host, a valid port, no credentials."""
+    try:
+        if len(url) > MAX_LINK_LENGTH:
+            raise ValueError("URL is too long")
+        validate_url_basic(url)
+        parsed = urlparse(url)
+        if not parsed.hostname:
+            raise ValueError("URL has no host")
+        parsed.port  # raises ValueError for an invalid port
+    except ValueError as error:
+        raise ValueError(f"{context}: Field '{field}' is invalid: {error}") from None
+
+
+def normalize_device_url(value: Any, context: str = "Entry") -> str:
+    """The address of a device in the network as a full URL (``192.168.1.5`` becomes ``http://192.168.1.5``)."""
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{context}: Field 'device_url' is invalid")
+    url = value.strip()
+    if "://" not in url:
+        url = f"http://{url}"
+    _check_link(url, "device_url", context)
+    return url
 
 
 def validate_source_config(source: Mapping[str, Any], context: str) -> None:
@@ -35,6 +64,12 @@ def validate_source_config(source: Mapping[str, Any], context: str) -> None:
         validate_url_basic(source_url)
     except ValueError as error:
         raise ValueError(f"{context}: {error}") from None
+
+    if "source_page" in source:
+        page = source["source_page"]
+        if not isinstance(page, str) or not page.strip():
+            raise ValueError(f"{context}: Field 'source_page' is invalid")
+        _check_link(page, "source_page", context)
 
     encoding = source.get("encoding")
     if encoding is not None:
@@ -78,10 +113,11 @@ def validate_profile(profile: Any, profile_id: str, context: str) -> None:
             f"allowed values: {', '.join(sorted(PROFILE_CATEGORIES))}"
         )
 
-    if "installed_version" in profile:
-        raise ValueError(
-            f"{context}: Field 'installed_version' belongs to an entry, not to a profile"
-        )
+    for entry_field in ("installed_version", "device_url"):
+        if entry_field in profile:
+            raise ValueError(
+                f"{context}: Field '{entry_field}' belongs to an entry, not to a profile"
+            )
 
     for key in ("manufacturer", "model"):
         value = profile.get(key)
@@ -158,6 +194,8 @@ def resolve_device(device: Mapping[str, Any], profiles_dir: Path) -> dict[str, A
         if "installed_version" in device:
             _validate_installed_version(device["installed_version"], context)
             resolved["installed_version"] = device["installed_version"].strip()
+        if "device_url" in device:
+            resolved["device_url"] = normalize_device_url(device["device_url"], context)
         return resolved
 
     context = f"Entry '{device_id}'"
@@ -172,6 +210,8 @@ def resolve_device(device: Mapping[str, Any], profiles_dir: Path) -> dict[str, A
     if "installed_version" in resolved:
         _validate_installed_version(resolved["installed_version"], context)
         resolved["installed_version"] = resolved["installed_version"].strip()
+    if "device_url" in resolved:
+        resolved["device_url"] = normalize_device_url(resolved["device_url"], context)
     validate_source_config(resolved, context)
     return resolved
 

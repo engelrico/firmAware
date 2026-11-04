@@ -7,6 +7,7 @@
   "category": "firmware",
   "source_type": "text",
   "source_url": "https://support-de.vorwerk.com/api/v2/help_center/de/articles/35480859847954.json",
+  "source_page": "https://support-de.vorwerk.com/hc/de/articles/35480859847954-Software-Updates-Thermomix-TM5",
   "value_path": ["article", "body"],
   "version_pattern": ">\\s*(2\\.[0-9]+)\\s*<"
 }

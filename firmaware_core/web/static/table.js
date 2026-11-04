@@ -1,7 +1,7 @@
 // The status table (start page), grouped by category.
 
 import { CATEGORIES, categoryKey, isOutdated, orderAfterDrop, state, visibleEntries } from "./state.js";
-import { $, announceChange, api, dash, el, formatTime, toast } from "./util.js";
+import { $, announceChange, api, dash, el, formatTime, linkEl, toast } from "./util.js";
 
 export function stateBadge(entry) {
   if (entry.error) return el("span", { class: "badge error", title: entry.error, text: "config error" });
@@ -58,6 +58,14 @@ function entryRow(entry, openPanel) {
     el("td", { class: "nowrap", "data-label": "First seen" }, entry.first_seen ? formatTime(entry.first_seen) : "–"),
     el("td", { class: "mono", "data-label": "Installed" }, dash(entry.installed_version)),
     el("td", { "data-label": "State" }, stateBadge(entry)),
+    el(
+      "td",
+      { class: "cell-links nowrap", "data-label": "Links" },
+      linkEl(entry.device_url, "Device", { title: `Open the device: ${entry.device_url}` }),
+      entry.device_url && entry.source_page ? " · " : "",
+      linkEl(entry.source_page, "Source", { title: `Firmware source: ${entry.source_page}` }),
+      entry.device_url || entry.source_page ? "" : "–",
+    ),
   );
   if (canReorder()) {
     row.draggable = true;
@@ -91,7 +99,7 @@ function groupTable(entries, openPanel) {
   const head = el(
     "tr",
     {},
-    ...["Entry", "Last check", "Last version", "First seen", "Installed", "State"].map((label) =>
+    ...["Entry", "Last check", "Last version", "First seen", "Installed", "State", "Links"].map((label) =>
       el("th", { scope: "col", text: label }),
     ),
   );

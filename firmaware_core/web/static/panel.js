@@ -3,7 +3,7 @@
 import { startCheck } from "./checks.js";
 import { orderAfterMove, state } from "./state.js";
 import { stateBadge } from "./table.js";
-import { $, announceChange, api, dash, el, entryUrl, formatTime, toast } from "./util.js";
+import { $, announceChange, api, dash, el, entryUrl, formatTime, hostOf, linkEl, toast } from "./util.js";
 
 let current = null; // { id, opener }
 
@@ -27,7 +27,7 @@ async function change(request, okText) {
 const patch = (id, changes, okText) =>
   change(() => api(entryUrl(id), { method: "PATCH", body: changes }), okText);
 
-function textForm({ label, value, placeholder, onSave, extra, buttonText = "Save" }) {
+function textForm({ label, value, placeholder, onSave, extra, hint, buttonText = "Save" }) {
   const input = el("input", { type: "text", value: value ?? "", placeholder, "aria-label": label, autocomplete: "off" });
   const form = el(
     "form",
@@ -40,6 +40,7 @@ function textForm({ label, value, placeholder, onSave, extra, buttonText = "Save
     },
     el("label", { text: label }),
     el("div", { class: "row" }, input, el("button", { type: "submit", class: "btn", text: buttonText }), extra),
+    hint ? el("p", { class: "hint", text: hint }) : null,
   );
   return form;
 }
@@ -129,7 +130,8 @@ function renderPanel(entry) {
     fact("Known versions", String(entry.known_versions)),
     entry.kind === "profile" && entry.type_devices > 1 ? fact("Devices of this type", String(entry.type_devices)) : null,
     entry.kind === "direct" ? fact("Source type", dash(entry.source_type)) : null,
-    entry.kind === "direct" ? fact("Source URL", dash(entry.source_url)) : null,
+    entry.device_url ? fact("Device page", linkEl(entry.device_url, hostOf(entry.device_url) || entry.device_url)) : null,
+    entry.source_page ? fact("Firmware source", linkEl(entry.source_page, hostOf(entry.source_page) || entry.source_page)) : null,
   ].filter(Boolean);
   body.append(el("dl", { class: "facts" }, facts.flat()));
 
@@ -173,6 +175,14 @@ function renderPanel(entry) {
         onSave: (value) => patch(entry.id, { name: value }, "Name saved"),
       }),
       installedField(entry, latestButton),
+      textForm({
+        label: "Device URL",
+        value: entry.device_url || "",
+        placeholder: "e.g. http://192.168.1.20",
+        hint: "Where the device itself can be reached in your network; it becomes a link.",
+        onSave: (value) =>
+          patch(entry.id, { device_url: value.trim() }, value.trim() ? "Device URL saved" : "Device URL cleared"),
+      }),
       el("label", { class: "switch" }, enabled, el("span", { text: "Enabled (skipped by checks when off)" })),
     ),
     section(

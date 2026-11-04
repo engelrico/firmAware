@@ -1782,6 +1782,17 @@ class WebServerTests(unittest.TestCase):
         self.assertEqual(self.send(server, "PATCH", "/api/entries/nope", {"name": "x"})[0], 404)
         self.assertEqual(self.send(server, "PATCH", "/api/entries/a", ["x"])[0], 400)
 
+    def test_device_url_over_the_api(self):
+        server = self.start()
+        status, entry = self.send(server, "PATCH", "/api/entries/a", {"device_url": "192.168.1.20"})
+        self.assertEqual((status, entry["device_url"]), (200, "http://192.168.1.20"))
+        self.assertEqual(entry["source_page"], "https://example.com/one")
+        status, error = self.send(server, "PATCH", "/api/entries/a", {"device_url": "javascript:alert(1)"})
+        self.assertEqual(status, 400)
+        self.assertIn("device_url", error["error"])
+        status, entry = self.send(server, "PATCH", "/api/entries/a", {"device_url": ""})
+        self.assertEqual((status, entry["device_url"]), (200, None))
+
     def test_add_duplicate_order_and_delete(self):
         server = self.start()
         status, entry = self.send(server, "POST", "/api/entries", {"profile": "t.one", "id": "b", "name": "Beta"})
@@ -2187,6 +2198,118 @@ class DeviceSelectionTests(unittest.TestCase):
         self.assertIn("Tolino (living room) [off]", out)
 
 
+class LinkFieldTests(unittest.TestCase):
+    """device_url (per entry) and source_page (per profile) are links shown in the web interface."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        root = Path(self._tmp.name)
+        self.profiles = root / "profiles"
+        self.profiles.mkdir()
+        self.profile = {
+            "schema_version": 2, "id": "t.one", "name": "Profile one", "category": "firmware",
+            "source_type": "text", "source_url": "https://api.example.com/data.json",
+            "version_pattern": r"v[0-9]+",
+        }
+        self.write_profile(self.profile)
+        self.ws = fw_service.Workspace(root / "devices.json", root / "state.json", self.profiles)
+        fw.save_devices_file(
+            self.ws.devices_path,
+            {"devices": [{"id": "a", "profile": "t.one", "name": "Alpha", "device_url": "192.168.1.20"}]},
+        )
+
+    def write_profile(self, profile):
+        (self.profiles / f"{profile['id']}.json").write_text(json.dumps(profile), encoding="utf-8")
+
+    def view(self, entry_id="a"):
+        return next(v for v in self.ws.entries() if v["id"] == entry_id)
+
+    # --- device_url ---
+
+    def test_normalize_device_url(self):
+        normalize = fw.normalize_device_url
+        self.assertEqual(normalize("192.168.1.20"), "http://192.168.1.20")
+        self.assertEqual(normalize(" nas.local:8080/admin "), "http://nas.local:8080/admin")
+        self.assertEqual(normalize("https://router.lan/"), "https://router.lan/")
+        self.assertEqual(normalize("http://[::1]:3000"), "http://[::1]:3000")
+
+    def test_normalize_device_url_rejects_unsafe_values(self):
+        for value in ("", "   ", 5, None, "javascript:alert(1)", "ftp://nas.local", "file:///etc/passwd",
+                      "http://user:pw@host", "mailto:x@y.z", "http://", "http://host:99999", "http://host:abc",
+                      "http://host/\x00", "http://" + "a" * 2100):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    fw.normalize_device_url(value)
+
+    def test_resolve_keeps_normalized_device_url(self):
+        resolved = fw.resolve_device({"id": "a", "profile": "t.one", "device_url": "192.168.1.20"}, self.profiles)
+        self.assertEqual(resolved["device_url"], "http://192.168.1.20")
+        direct = {"id": "d", "source_type": "text", "source_url": "https://example.com", "version_pattern": "v",
+                  "device_url": "nas.local"}
+        self.assertEqual(fw.resolve_device(direct, self.profiles)["device_url"], "http://nas.local")
+        with self.assertRaisesRegex(ValueError, "device_url"):
+            fw.resolve_device({"id": "a", "profile": "t.one", "device_url": "javascript:x"}, self.profiles)
+
+    def test_profile_must_not_contain_device_url(self):
+        with self.assertRaisesRegex(ValueError, "belongs to an entry"):
+            fw.validate_profile({**self.profile, "device_url": "http://x.lan"}, "t.one", "ctx")
+
+    # --- source_page ---
+
+    def test_source_page_is_validated(self):
+        fw.validate_profile({**self.profile, "source_page": "https://example.com/releases"}, "t.one", "ctx")
+        for bad in ("", 5, "javascript:x", "ftp://example.com", "https://user:pw@example.com"):
+            with self.subTest(bad=bad):
+                with self.assertRaisesRegex(ValueError, "source_page"):
+                    fw.validate_profile({**self.profile, "source_page": bad}, "t.one", "ctx")
+
+    def test_shipped_profiles_with_source_page_are_valid(self):
+        profiles_dir = Path(fw_web.__file__).resolve().parents[2] / "profiles"
+        for path in sorted(profiles_dir.glob("*.json")):
+            with self.subTest(profile=path.stem):
+                fw.load_profile(path.stem, profiles_dir)
+
+    # --- service ---
+
+    def test_view_has_both_links_and_falls_back_to_the_source_url(self):
+        view = self.view()
+        self.assertEqual(view["device_url"], "http://192.168.1.20")
+        self.assertEqual(view["source_page"], "https://api.example.com/data.json")  # no source_page: source_url
+        self.write_profile({**self.profile, "source_page": "https://example.com/releases"})
+        self.assertEqual(self.view()["source_page"], "https://example.com/releases")
+        self.assertEqual(self.view()["source_url"], "https://api.example.com/data.json")
+
+    def test_invalid_entries_expose_no_links(self):
+        fw.save_devices_file(
+            self.ws.devices_path,
+            {"devices": [{"id": "a", "profile": "t.one", "device_url": "javascript:alert(1)"}]},
+        )
+        view = self.view()
+        self.assertIsNotNone(view["error"])
+        self.assertIsNone(view["device_url"])
+        self.assertIsNone(view["source_page"])
+
+    def test_update_device_url(self):
+        self.ws.update_entry("a", {"device_url": "  nas.local:8080  "})
+        self.assertEqual(self.view()["device_url"], "http://nas.local:8080")
+        stored = json.loads(self.ws.devices_path.read_text())["devices"][0]
+        self.assertEqual(stored["device_url"], "http://nas.local:8080")  # saved normalized
+        for bad in ("javascript:alert(1)", "ftp://x", 5):
+            with self.subTest(bad=bad):
+                with self.assertRaises(fw_service.ServiceError):
+                    self.ws.update_entry("a", {"device_url": bad})
+        self.assertEqual(self.view()["device_url"], "http://nas.local:8080")
+        self.ws.update_entry("a", {"device_url": ""})
+        self.assertIsNone(self.view()["device_url"])
+        self.assertNotIn("device_url", json.loads(self.ws.devices_path.read_text())["devices"][0])
+
+    def test_duplicate_does_not_copy_the_device_url(self):
+        new_id = self.ws.duplicate_entry("a", "Beta")
+        self.assertIsNone(self.view(new_id)["device_url"])
+        self.assertEqual(self.view("a")["device_url"], "http://192.168.1.20")
+
+
 class SourceTypeRegistryTests(unittest.TestCase):
     def test_registry_defines_supported_types(self):
         self.assertEqual(fw.SUPPORTED_SOURCE_TYPES, frozenset(fw_sources.SOURCE_TYPES))
@@ -2468,6 +2591,14 @@ class WebFrontendLogicTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("node"), "Node.js is not installed")
     def test_ordering_helpers(self):
         script = Path(__file__).resolve().parent / "web_order_test.mjs"
+        result = subprocess.run(
+            ["node", str(script)], capture_output=True, text=True, timeout=30, check=False
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is not installed")
+    def test_link_helpers(self):
+        script = Path(__file__).resolve().parent / "web_util_test.mjs"
         result = subprocess.run(
             ["node", str(script)], capture_output=True, text=True, timeout=30, check=False
         )

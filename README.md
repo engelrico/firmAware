@@ -125,8 +125,8 @@ may be mixed.
 ```
 
 Profile-based entries may contain **only** the fields `id`, `profile`, `name`,
-`enabled`, and `installed_version`. Technical fields such as `source_url` are a
-configuration error here.
+`enabled`, `installed_version`, and `device_url`. Technical fields such as
+`source_url` are a configuration error here.
 
 ### Several devices of one type, installed version
 
@@ -238,6 +238,10 @@ light/dark theme.
 - **Add:** *Add entry* lists the device types (profiles); pick one and give the
   device a name (each name can be used once). Add the same type twice to track
   two devices of it. Technical IDs are generated automatically and never shown.
+- **Links:** each entry links to its firmware source (the page the versions come
+  from) and, if you set a *Device URL* such as `192.168.1.20`, to the device in
+  your network. A profile can name a human-readable page with `source_page` when
+  its `source_url` is a machine endpoint (for example a JSON API).
 - **Edit:** click an entry to rename it, pick its installed version from the list of known
   versions (or mark it as updated to the latest), enable or disable it, move it up or down, duplicate it,
   or delete it. Rows can also be dragged to reorder them within a category.

@@ -45,6 +45,29 @@ export async function api(path, { method = "GET", body } = {}) {
   return data;
 }
 
+// Links are only ever http(s): the server validates them, this is the second guard.
+export function safeHttpUrl(value) {
+  if (typeof value !== "string") return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+// An external link that opens in a new tab; null if the address is not a safe http(s) URL.
+export function linkEl(value, label, props = {}) {
+  const href = safeHttpUrl(value);
+  if (!href) return null;
+  return el("a", { href, target: "_blank", rel: "noopener noreferrer", class: "ext", title: href, ...props }, label);
+}
+
+export function hostOf(value) {
+  const href = safeHttpUrl(value);
+  return href ? new URL(href).host : "";
+}
+
 export const entryUrl = (id) => `/api/entries/${encodeURIComponent(id)}`;
 
 // Same format as the command line: the stored local time without conversion.

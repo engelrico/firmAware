@@ -116,10 +116,11 @@ An entry is configured either directly (with all technical fields in `devices.js
 | `profile` | No | Reference to an entry profile; present = profile-based entry |
 | `enabled` | No | Boolean; `false` skips the entry during `--check`; default `true` |
 | `installed_version` | No | Non-empty string; the version label installed on this device, maintained by the user (see 4.10) |
+| `device_url` | No | Address of the device itself in the network, shown as a link in the web interface. `http` or `https` with a host (a value without scheme such as `192.168.1.20` is stored as `http://192.168.1.20`), no credentials, at most 2048 characters; `javascript:` and other schemes are a configuration error. Not allowed in a profile file; not copied when an entry is duplicated |
 | `source_type` | Direct only | `text`, `json`, or `json_value` |
 | `source_url` | Direct only | URL of the source to fetch |
 
-If `profile` is set, **only** the fields `id`, `profile`, `name`, `enabled`, and `installed_version` may occur. Technical fields such as `source_url`, `source_type`, `encoding`, or `version_pattern` are a configuration error; there is no silent overriding or ignoring. Individual technical settings remain possible via direct entries.
+If `profile` is set, **only** the fields `id`, `profile`, `name`, `enabled`, `installed_version`, and `device_url` may occur. Technical fields such as `source_url`, `source_type`, `encoding`, or `version_pattern` are a configuration error; there is no silent overriding or ignoring. Individual technical settings remain possible via direct entries.
 
 Additional descriptive fields such as manufacturer, model, or hardware version are not evaluated.
 
@@ -265,6 +266,7 @@ Example `profiles/coros.dura.json`:
 | `source_type` | Yes | `text`, `json`, or `json_value` |
 | `source_url` | Yes | Non-empty HTTP/HTTPS URL with host |
 | `encoding` | No | Non-empty, Python-supported charset designation |
+| `source_page` | No | `http`/`https` URL of the human-readable page for the firmware source (release notes, download page). Used only as a link in the web interface, never fetched; without it the link uses `source_url` |
 | `manufacturer` | No | Non-empty string |
 | `model` | No | Non-empty string |
 
@@ -693,16 +695,17 @@ Vanilla HTML, CSS, and JavaScript without build step, framework, or external req
 
 - **Check** (like `--check`): "Check all" and "Check now" per entry start a background job. A result panel shows the per-entry lines the command line prints (`Baseline (N): ...`, `new: ...`, `no changes`, `outdated: installed X, latest Y`, `Check error: ...`, `[disabled]`) with a progress bar; the table refreshes when the job ends. A reloaded page resumes the latest job. The web check never sends mail; scheduled mail stays with `--check --notify`.
 - **Edit** (replaces the former `--interactive` mode): clicking an entry opens a details panel with the version history and these actions: edit the name (empty restores the profile name), choose the installed version from a list of the versions known for the device type (newest first; no free text; "Not set" clears it; the list is empty until a check has found versions), mark it as updated to the latest known version, enable or disable, move up or down within its category, duplicate under a new name (default `<name> (copy)`; the copy has no installed version), and delete (two clicks). Rows can also be reordered by drag and drop while no filter or search is active.
+- **Links:** every entry shows a "Source" link (the profile's `source_page`, else its `source_url`) and, if `device_url` is set, a "Device" link, in the table (column "Links") and in the details panel. The device URL is edited in the panel (a value without scheme gets `http://`; empty clears it). Links open in a new tab with `rel="noopener noreferrer"` and are only rendered for `http`/`https` addresses.
 - **Add:** the "Add entry" dialog lists the valid profiles (searchable, with a badge for types already in use) and creates a profile-based entry with the name you give it (prefilled with the profile name; every name can be used once) and a generated ID; the details panel of the new entry opens afterwards.
 - **Accessibility and layout:** native `<dialog>` for the add form, a focus-trapped details panel closed with `Escape`, keyboard-operable controls, `aria-live` regions for progress and messages, larger touch targets on touch screens, and no external fonts or requests. Entries from invalid configuration stay visible with their error.
 
 ### API (JSON, under `/api`)
 | Request | Result |
 |---------|--------|
-| `GET /api/entries` | `{"entries": [...]}` with `id`, `name`, `custom_name`, `category`, `kind` (`profile` or `direct`), `profile`, `enabled`, `source_url`, `source_type`, `last_checked`, `latest_version`, `first_seen`, `known_versions`, `installed_version`, `installed_state` (`current`, `outdated`, `unknown`, or `null`), `error` |
+| `GET /api/entries` | `{"entries": [...]}` with `id`, `name`, `custom_name`, `category`, `kind` (`profile` or `direct`), `profile`, `enabled`, `source_url`, `source_page` (link target for the firmware source), `device_url` (or `null`; both are `null` for an entry with a configuration `error`), `source_type`, `type_devices`, `last_checked`, `latest_version`, `first_seen`, `known_versions`, `installed_version`, `installed_state` (`current`, `outdated`, `unknown`, or `null`), `error` |
 | `GET /api/entries/{id}` | the same fields plus `history` (version, `discovered_at`, `newest`), newest version first |
 | `GET /api/profiles` | `{"profiles": [...]}` with `id`, `name`, `category`, `manufacturer`, `model` of every valid profile |
-| `PATCH /api/entries/{id}` | body with any of `name` (empty removes the local name; `409` if another entry already shows that name), `enabled`, `installed_version` (empty clears; a new value must be a version known for the entry's source, otherwise `400`; an unchanged value is accepted); returns the entry |
+| `PATCH /api/entries/{id}` | body with any of `name` (empty removes the local name; `409` if another entry already shows that name), `enabled`, `device_url` (empty clears; normalized as described in 4.1; invalid gives `400`), `installed_version` (empty clears; a new value must be a version known for the entry's source, otherwise `400`; an unchanged value is accepted); returns the entry |
 | `POST /api/entries/{id}/installed-latest` | sets `installed_version` to the highest known version; `409` if none is known yet |
 | `POST /api/entries` | `{"profile", "name"?, "id"?}` adds a profile-based entry at the end (`201`); the name defaults to the profile name, the ID is generated from the name unless given; `409` for a name or ID already used |
 | `POST /api/entries/{id}/duplicate` | `{"name"?, "id"?}` copies the entry below the original without `installed_version` (`201`); the default name is `<name> (copy)`, then `(copy 2)`, ...; `409` for a name or ID already used |
