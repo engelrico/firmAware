@@ -2453,6 +2453,48 @@ class TolinoProfileTests(unittest.TestCase):
                 self.assertEqual(profile["category"], "firmware")
 
 
+class GithubReleaseProfileTests(unittest.TestCase):
+    """Release pages of GitHub: only the tags of stable releases count, not text in the release notes."""
+
+    PROFILES = Path(fw_web.__file__).resolve().parents[2] / "profiles"
+
+    @staticmethod
+    def page(repo, tags, notes):
+        links = "".join(f'<a href="/{repo}/releases/tag/{tag}" data-view-component="true">{tag}</a>' for tag in tags)
+        return f"<html><body>{links}<div class='markdown-body'>{notes}</div></body></html>"
+
+    def versions(self, profile_id, content):
+        profile = fw.load_profile(profile_id, self.PROFILES)
+        return fw.extract_versions(profile["source_type"], content, profile)
+
+    def test_esphome_ignores_versions_mentioned_in_release_notes(self):
+        page = self.page(
+            "esphome/esphome",
+            # every pre-release (b, rc, a, dev) is ignored; only plain stable tags count
+            ["2026.11.0b2", "2026.11.0rc1", "2026.11.0a1", "2026.11.0.dev2", "2026.10.2", "2026.10.1", "2026.10.0", "2026.10.0b6"],
+            "<li>[core] Warn on every run that Intel Mac support ends by 2027.6.0</li>"
+            "<li>[docker] Bump base image to 2026.11.0</li>"
+            '<a href="https://github.com/other/repo/releases/tag/2027.1.0">other project</a>'
+            '<a href="/esphome/esphome/releases/tag/2026.12.0?expanded=true">expanded link</a>',
+        )
+        self.assertEqual(self.versions("esphome.esphome", page), ["2026.10.0", "2026.10.1", "2026.10.2", "2026.12.0"])
+
+    def test_home_assistant_ignores_dependency_versions_in_the_notes(self):
+        page = self.page(
+            "home-assistant/core",
+            ["2026.11.0", "2026.11.0b6", "2026.10.4", "2026.10.3"],
+            "<li>Update knx-frontend to 2026.10.29.192948</li>"
+            "<li>Bump knx-frontend to 2026.11.2.195507</li>"
+            "<li>Bump wheels and base image to 2026.10.0</li>",
+        )
+        self.assertEqual(self.versions("home-assistant.core", page), ["2026.10.3", "2026.10.4", "2026.11.0"])
+
+    def test_pre_releases_only_is_an_error(self):
+        page = self.page("esphome/esphome", ["2026.11.0b1", "2026.11.0b2"], "<li>2026.11.0</li>")
+        with self.assertRaisesRegex(ValueError, "page layout may have changed"):
+            self.versions("esphome.esphome", page)
+
+
 class SourceTypeRegistryTests(unittest.TestCase):
     def test_registry_defines_supported_types(self):
         self.assertEqual(fw.SUPPORTED_SOURCE_TYPES, frozenset(fw_sources.SOURCE_TYPES))
