@@ -37,7 +37,7 @@ from .state import (
     update_state,
 )
 
-EDITABLE_FIELDS = frozenset({"name", "enabled", "installed_version", "device_url"})
+EDITABLE_FIELDS = frozenset({"name", "enabled", "installed_version", "device_url", "profile"})
 
 
 class ServiceError(Exception):
@@ -215,9 +215,11 @@ class Workspace:
         raise NotFoundError(f"No entry with ID '{entry_id}'")
 
     def update_entry(self, entry_id: str, changes: Mapping[str, Any]) -> None:
-        """Change ``name``, ``enabled``, or ``installed_version`` of an entry.
+        """Change ``name``, ``enabled``, ``installed_version``, ``device_url``, or ``profile``.
 
         An empty ``name`` removes the local name; an empty ``installed_version`` clears it.
+        ``profile`` moves a profile-based entry to another device type: it then uses that
+        profile's source and version history (the installed version is kept as is).
         A new ``installed_version`` must be one of the versions known for the entry's
         source (the web interface offers them in a list); an unchanged value is kept as is.
         """
@@ -227,6 +229,10 @@ class Workspace:
 
         def change(entries: list[dict[str, Any]]) -> None:
             entry = entries[self._find(entries, entry_id)]
+            if "profile" in changes:
+                # Fold old per-entry state records under the profile they were recorded for,
+                # before the entry moves to another one.
+                self._state(entries, persist=True)
             candidate = copy.deepcopy(entry)
             if "name" in changes:
                 name = changes["name"]
@@ -234,6 +240,13 @@ class Workspace:
                     candidate.pop("name", None)
                 else:
                     candidate["name"] = name.strip() if isinstance(name, str) else name
+            if "profile" in changes:
+                profile = changes["profile"]
+                if "profile" not in entry:
+                    raise ServiceError("Only profile-based entries can change their device type")
+                if not isinstance(profile, str) or not profile.strip():
+                    raise ServiceError("Field 'profile' is invalid")
+                candidate["profile"] = profile.strip()
             if "enabled" in changes:
                 candidate["enabled"] = changes["enabled"]
             if "installed_version" in changes:
@@ -257,16 +270,17 @@ class Workspace:
                 candidate["device_url"] = resolved["device_url"]  # stored in its normalized form
             chosen = candidate.get("installed_version")
             if "installed_version" in changes and chosen and chosen != entry.get("installed_version"):
-                known = (stored_record(self._state(entries), entry) or {}).get("discovered_at") or {}
+                known = (stored_record(self._state(entries), candidate) or {}).get("discovered_at") or {}
                 if not known:
                     raise ServiceError("No known versions yet; run a check first")
                 if chosen not in known:
                     raise ServiceError(
                         f"'{chosen}' is not a known version of this device type; pick one from the list"
                     )
-            if "name" in changes:
-                index = entries.index(entry)
-                self._require_free_name(entries, resolved.get("name") or resolved["id"], skip=index)
+            shown = resolved.get("name") or resolved["id"]
+            if "name" in changes or _name_key(shown) != _name_key(self._display_name(entry)):
+                # also when a new device type changes the name an entry is shown under
+                self._require_free_name(entries, shown, skip=entries.index(entry))
             entry.clear()
             entry.update(candidate)
 

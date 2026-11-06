@@ -242,7 +242,8 @@ light/dark theme.
   from) and, if you set a *Device URL* such as `192.168.1.20`, to the device in
   your network. A profile can name a human-readable page with `source_page` when
   its `source_url` is a machine endpoint (for example a JSON API).
-- **Edit:** click an entry to rename it, pick its installed version from the list of known
+- **Edit:** click an entry to rename it, change its device type (the profile it
+  follows; the installed version is kept), pick its installed version from the list of known
   versions (or mark it as updated to the latest), enable or disable it, move it up or down, duplicate it,
   or delete it. Rows can also be dragged to reorder them within a category.
 

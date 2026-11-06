@@ -13,14 +13,17 @@ function fact(label, value) {
   return [el("dt", { text: label }), el("dd", {}, value)];
 }
 
+// Returns whether the change was saved, so a control can restore its old value after an error.
 async function change(request, okText) {
   try {
     await request();
     if (okText) toast(okText);
     announceChange();
+    return true;
   } catch (error) {
     toast(error.message, true);
     if (error.status === 404) closePanel();
+    return false;
   }
 }
 
@@ -77,6 +80,51 @@ function installedField(entry, extra) {
     el("label", { text: "Installed version" }),
     el("div", { class: "row" }, select, extra),
     known.length === 0 ? el("p", { class: "hint", text: "Run a check first to see the available versions." }) : null,
+  );
+}
+
+let profiles = [];
+
+async function loadProfiles() {
+  try {
+    profiles = (await api("/api/profiles")).profiles;
+  } catch {
+    profiles = []; // the rest of the panel still works
+  }
+}
+
+// Which device type (profile) the entry follows; changing it changes source and version list.
+function deviceTypeField(entry) {
+  if (entry.kind !== "profile") return null;
+  const options = profiles
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((profile) => el("option", { value: profile.id, text: profile.name }));
+  if (!profiles.some((profile) => profile.id === entry.profile)) {
+    options.unshift(el("option", { value: entry.profile, text: `${entry.profile} (unknown)` }));
+  }
+  const select = el(
+    "select",
+    {
+      "aria-label": "Device type",
+      onchange: async (event) => {
+        const saved = await patch(
+          entry.id,
+          { profile: event.target.value },
+          "Device type changed; run a check to load its versions",
+        );
+        if (!saved) select.value = entry.profile;
+      },
+    },
+    options,
+  );
+  select.value = entry.profile;
+  return el(
+    "div",
+    { class: "field" },
+    el("label", { text: "Device type" }),
+    el("div", { class: "row" }, select),
+    el("p", { class: "hint", text: "The source and version list this device follows. Its installed version is kept." }),
   );
 }
 
@@ -174,6 +222,7 @@ function renderPanel(entry) {
         placeholder: entry.name,
         onSave: (value) => patch(entry.id, { name: value }, "Name saved"),
       }),
+      deviceTypeField(entry),
       installedField(entry, latestButton),
       textForm({
         label: "Device URL",
@@ -243,6 +292,7 @@ function renderPanel(entry) {
 export async function openPanel(entryId, opener) {
   current = { id: entryId, opener: opener || null };
   try {
+    await loadProfiles();
     renderPanel(await api(entryUrl(entryId)));
   } catch (error) {
     toast(error.message, true);

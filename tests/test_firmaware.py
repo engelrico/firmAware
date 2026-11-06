@@ -1498,6 +1498,62 @@ class ServiceTests(unittest.TestCase):
         with self.assertRaises(fw_service.ServiceError):
             self.ws.update_entry("a", {"installed_version": "legacy-2"})
 
+    def test_switch_device_type(self):
+        self.check("v1 v2")
+        self.ws.update_entry("c", {"name": "Gamma"})  # c uses the default name of t.two
+        self.ws.update_entry("a", {"installed_version": "v2"})
+        self.ws.update_entry("b", {"profile": "t.two"})
+        view = next(v for v in self.ws.entries() if v["id"] == "b")
+        self.assertEqual(view["profile"], "t.two")
+        self.assertEqual(view["name"], "Profile t.two")  # no local name: shown as the new type
+        self.assertEqual(view["category"], "software")
+        self.assertEqual(view["source_url"], "https://example.com/t.two")
+        # an entry with a local name keeps it, and its installed version is kept as is
+        self.ws.update_entry("a", {"profile": "t.two"})
+        view = next(v for v in self.ws.entries() if v["id"] == "a")
+        self.assertEqual((view["name"], view["profile"], view["installed_version"]), ("Alpha", "t.two", "v2"))
+        stored = json.loads(self.ws.devices_path.read_text())["devices"]
+        self.assertEqual([e["profile"] for e in stored if e["id"] in ("a", "b")], ["t.two", "t.two"])
+
+    def test_switch_device_type_uses_the_new_history(self):
+        self.check("v1 v2")  # records for t.one (c is disabled and t.two is not checked yet)
+        before = self.ws.entry("b")
+        self.assertEqual([h["version"] for h in before["history"]], ["v2", "v1"])
+        self.ws.update_entry("c", {"name": "Gamma"})
+        self.ws.update_entry("b", {"profile": "t.two"})
+        after = self.ws.entry("b")
+        self.assertEqual(after["history"], [])
+        self.assertIsNone(after["latest_version"])
+        self.assertEqual(self.ws.entry("a")["history"][0]["version"], "v2")  # a stays on t.one
+
+    def test_switch_device_type_can_set_a_known_version_of_the_new_type(self):
+        self.check("v1 v2")
+        with self.assertRaises(fw_service.ServiceError):
+            self.ws.update_entry("b", {"profile": "t.two", "installed_version": "v2"})  # t.two knows nothing yet
+        self.assertEqual(next(v for v in self.ws.entries() if v["id"] == "b")["profile"], "t.one")
+
+    def test_switch_device_type_rejects_bad_input(self):
+        for bad in ("missing", "", 5, "../etc"):
+            with self.subTest(profile=bad):
+                with self.assertRaises(fw_service.ServiceError):
+                    self.ws.update_entry("b", {"profile": bad})
+        fw.save_devices_file(
+            self.ws.devices_path,
+            {"devices": [{"id": "d", "source_type": "text", "source_url": "https://example.com",
+                          "version_pattern": "v", "name": "Direct"}]},
+        )
+        with self.assertRaises(fw_service.ServiceError) as raised:
+            self.ws.update_entry("d", {"profile": "t.one"})
+        self.assertIn("profile-based", str(raised.exception))
+
+    def test_switch_device_type_must_not_duplicate_the_shown_name(self):
+        self.ws.add_entry("t.two", "Second")
+        self.ws.update_entry("c", {"name": ""})  # c shows "Profile t.two" again
+        with self.assertRaises(fw_service.ConflictError):
+            self.ws.update_entry("b", {"profile": "t.two"})  # b would also show "Profile t.two"
+        self.ws.update_entry("b", {"name": "Beta", "profile": "t.two"})  # a custom name resolves it
+        self.assertEqual(next(v for v in self.ws.entries() if v["id"] == "b")["name"], "Beta")
+
     def test_update_entry_rejects_bad_input(self):
         for changes in ({"id": "z"}, {"enabled": "yes"}, {"installed_version": 5}, {"source_url": "x"}):
             with self.subTest(changes=changes):
@@ -1792,6 +1848,13 @@ class WebServerTests(unittest.TestCase):
         self.assertIn("device_url", error["error"])
         status, entry = self.send(server, "PATCH", "/api/entries/a", {"device_url": ""})
         self.assertEqual((status, entry["device_url"]), (200, None))
+
+    def test_device_type_over_the_api(self):
+        server = self.start()
+        status, error = self.send(server, "PATCH", "/api/entries/a", {"profile": "does.not.exist"})
+        self.assertEqual(status, 400)
+        status, entry = self.send(server, "PATCH", "/api/entries/a", {"profile": "t.one"})
+        self.assertEqual((status, entry["profile"]), (200, "t.one"))
 
     def test_add_duplicate_order_and_delete(self):
         server = self.start()
@@ -2123,6 +2186,27 @@ class SharedSourceTests(unittest.TestCase):
             ws.check(["phone-a"])
         self.assertTrue(self.state.with_name("state.json.bak").exists())
         self.assertIn("profiles", self.stored())
+
+    def test_switching_the_device_type_migrates_old_records_first(self):
+        (self.profiles_dir / "t.other.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 2, "id": "t.other", "name": "Other OS", "category": "operating_system",
+                    "source_type": "text", "source_url": "https://example.com/other", "version_pattern": r"v[0-9]+",
+                }
+            ),
+            encoding="utf-8",
+        )
+        self.legacy_state()
+        ws = fw_service.Workspace(self.devices, self.state, self.profiles_dir)
+        ws.update_entry("phone-a", {"profile": "t.other"})
+        state = self.stored()
+        self.assertEqual(sorted(state["profiles"]["t.os"]["discovered_at"]), ["v1", "v2", "v3"])
+        self.assertNotIn("t.other", state.get("profiles", {}))  # nothing leaks into the new type
+        self.assertTrue(self.state.with_name("state.json.bak").exists())
+        views = {v["id"]: v for v in ws.entries()}
+        self.assertEqual(views["phone-a"]["known_versions"], 0)
+        self.assertEqual(views["phone-b"]["known_versions"], 3)
 
     def test_service_error_applies_to_every_device_of_the_type(self):
         ws = fw_service.Workspace(self.devices, self.state, self.profiles_dir)
