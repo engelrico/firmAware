@@ -1,0 +1,12 @@
+{
+  "schema_version": 2,
+  "id": "tolino.vision-2",
+  "name": "tolino Vision 2 – Firmware",
+  "manufacturer": "tolino",
+  "model": "Vision 2",
+  "category": "firmware",
+  "source_type": "text",
+  "source_url": "https://mytolino.de/service/software-updates/",
+  "encoding": "utf-8",
+  "version_pattern": "(?is)<strong>\\s*(?:[^<,]*,\\s*)*tolino vision 2(?:\\s*,[^<]*)?\\s*</strong>\\s*</h2>.*?<p\\b[^>]*>\\s*([0-9]+(?:\\.[0-9]+)+)\\s*</p>"
+}

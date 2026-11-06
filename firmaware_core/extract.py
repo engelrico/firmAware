@@ -17,7 +17,7 @@ def extract_versions(source_type: str, content: str, device: Mapping[str, Any]) 
         raise FirmwareSourceError(f"Unknown source type: {source_type}") from None
     versions = source.extract(device, content)
     if not versions:
-        raise FirmwareSourceError("No versions found; stored state remains unchanged")
+        raise FirmwareSourceError("No versions found; the page layout may have changed (stored state remains unchanged)")
     return sorted(versions)
 
 

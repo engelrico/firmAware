@@ -119,7 +119,7 @@ class ExtractDispatchTests(unittest.TestCase):
 
     def test_empty_result_is_error(self):
         device = {"version_pattern": r"v[0-9]+"}
-        with self.assertRaisesRegex(ValueError, "No versions found; stored state remains unchanged"):
+        with self.assertRaisesRegex(ValueError, "No versions found; the page layout may have changed"):
             fw.extract_versions("text", "keine Treffer", device)
 
     def test_sorted_list(self):
@@ -2308,6 +2308,65 @@ class LinkFieldTests(unittest.TestCase):
         new_id = self.ws.duplicate_entry("a", "Beta")
         self.assertIsNone(self.view(new_id)["device_url"])
         self.assertEqual(self.view("a")["device_url"], "http://192.168.1.20")
+
+
+class TolinoProfileTests(unittest.TestCase):
+    """The tolino profiles read the current version under the heading of their device group."""
+
+    PROFILES = Path(fw_web.__file__).resolve().parents[2] / "profiles"
+
+    @staticmethod
+    def group(heading, current, ranges=()):
+        """One device group as the software update page renders it (simplified)."""
+        header = "".join(f"<div><div><p><strong>{w}</strong></p></div></div>" for w in ("Version", "Hinweis", "Download"))
+        rows = f'<div><div><p>{current}</p></div><div><p>Ihre Version ist aktuell</p></div></div>'
+        for span, target in ranges:
+            rows += (
+                f'<div><div><p>{span}</p></div><div><p>Update erfolgt direkt auf Version {target}</p></div>'
+                f'<div><p><a href="https://download.example/ereader/{target}/update.zip">hier herunterladen</a></p></div></div>'
+            )
+        return f'<div class="row"><h2 style="margin:0"><strong>{heading}</strong></h2></div>{header}{rows}'
+
+    def page(self):
+        return "<html><body>" + "".join(
+            [
+                self.group("tolino epos 3", "16.0.9"),
+                self.group("tolino shine 4 HD", "9.9.9"),
+                self.group("tolino shine 4", "16.2.1", [("15.0.0 – 16.2.0", "16.2.1")]),
+                self.group("tolino epos 2, tolino vison 5, tolino shine 3, tolino page 2", "16.2.5"),
+                self.group(
+                    "tolino vision 4 HD, tolino vision 3 HD, tolino vision 2, tolino shine 2 HD, tolino page",
+                    "16.2.0",
+                    [("12.2.0-16.1.0", "16.2.0"), ("bis 10.1.0", "12.2.0")],
+                ),
+                self.group("tolino shine &amp; tolino vision 20", "20.0.0"),
+            ]
+        ) + "</body></html>"
+
+    def versions(self, profile_id, content=None):
+        profile = fw.load_profile(profile_id, self.PROFILES)
+        return fw.extract_versions(profile["source_type"], content or self.page(), profile)
+
+    def test_shine_4_reads_only_its_own_group(self):
+        self.assertEqual(self.versions("tolino.shine-4"), ["16.2.1"])
+
+    def test_vision_2_is_found_in_the_grouped_heading(self):
+        self.assertEqual(self.versions("tolino.vision-2"), ["16.2.0"])
+
+    def test_a_missing_device_group_is_an_error(self):
+        page = self.page().replace("tolino vision 2", "tolino vision 9")
+        with self.assertRaisesRegex(ValueError, "page layout may have changed"):
+            self.versions("tolino.vision-2", page)
+        old_layout = '<img alt="tolino shine 4 logo"></figure><figure><table><tbody><tr><td>15.0.0</td></tr></tbody></table>'
+        with self.assertRaises(ValueError):
+            self.versions("tolino.shine-4", old_layout)
+
+    def test_both_profiles_use_the_current_page(self):
+        for profile_id in ("tolino.shine-4", "tolino.vision-2"):
+            with self.subTest(profile=profile_id):
+                profile = fw.load_profile(profile_id, self.PROFILES)
+                self.assertEqual(profile["source_url"], "https://mytolino.de/service/software-updates/")
+                self.assertEqual(profile["category"], "firmware")
 
 
 class SourceTypeRegistryTests(unittest.TestCase):
