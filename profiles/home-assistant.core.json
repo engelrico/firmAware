@@ -7,5 +7,5 @@
   "category": "operating_system",
   "source_type": "text",
   "source_url": "https://github.com/home-assistant/core/releases",
-  "version_pattern": "/home-assistant/core/releases/tag/(20[0-9]{2}\\.[0-9]{1,2}\\.[0-9]+)(?=[\\\"'?#])"
+  "version_pattern": "href=\"#release-(20[0-9]{2}\\.[0-9]{1,2}\\.[0-9]+)\""
 }
