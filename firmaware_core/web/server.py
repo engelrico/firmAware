@@ -333,6 +333,10 @@ class Handler(BaseHTTPRequestHandler):
             new_id = workspace.duplicate_entry(entry_id, body.get("name"), body.get("id"))
             self._json(HTTPStatus.CREATED, workspace.entry(new_id))
 
+        def forget(entry_id: str) -> None:
+            workspace.forget_version(entry_id, self._body().get("version"))
+            self._json(ok, workspace.entry(entry_id))
+
         def delete(entry_id: str) -> None:
             workspace.delete_entry(entry_id)
             self._json(ok, {"ok": True})
@@ -359,6 +363,7 @@ class Handler(BaseHTTPRequestHandler):
             ("DELETE", re.compile(rf"/api/entries/{ENTRY_ID}"), delete),
             ("POST", re.compile(rf"/api/entries/{ENTRY_ID}/installed-latest"), installed_latest),
             ("POST", re.compile(rf"/api/entries/{ENTRY_ID}/duplicate"), duplicate),
+            ("POST", re.compile(rf"/api/entries/{ENTRY_ID}/forget-version"), forget),
             ("GET", re.compile(r"/api/profiles"), profiles),
             ("POST", re.compile(r"/api/checks"), start_check),
             ("GET", re.compile(r"/api/checks"), latest_check),

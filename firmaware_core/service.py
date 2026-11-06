@@ -29,6 +29,7 @@ from .locking import file_lock
 from .profiles import load_profile, resolve_device
 from .state import (
     backup_state_file,
+    forget_version,
     load_devices_file,
     load_state,
     migrated_copy,
@@ -337,6 +338,22 @@ class Workspace:
         if not isinstance(entry_id, str) or not PROFILE_ID_PATTERN.fullmatch(entry_id):
             raise ServiceError("ID must match [a-z0-9][a-z0-9._-]*")
         return entry_id
+
+    def forget_version(self, entry_id: str, version: str) -> None:
+        """Remove a version from the history of an entry's source.
+
+        For versions a profile detected by mistake. Every device of the same type shares
+        that history. An installed version equal to it is kept; if the source still
+        shows the version, the next check finds it again.
+        """
+        if not isinstance(version, str) or not version.strip():
+            raise ServiceError("Field 'version' is invalid")
+        raw = self._raw_entries()
+        entry = raw[self._find(raw, entry_id)]
+        self._state(raw, persist=True)  # fold old per-entry records first
+        section, key = source_key(entry)
+        if not forget_version(self.state_path, section, key, version):
+            raise NotFoundError(f"Version '{version}' is not in the history")
 
     def add_entry(
         self, profile_id: str, name: str | None = None, entry_id: str | None = None

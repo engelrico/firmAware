@@ -1344,6 +1344,16 @@ class SharedStorageTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(sorted(fw.load_state(state)["devices"]), ["d1", "other"])
 
+    def test_forget_version_helper(self):
+        path = self.root / "state.json"
+        fw.update_state(path, {"d": {"last_checked": "t", "discovered_at": {"1": "t", "2": "t"}}})
+        self.assertTrue(fw.forget_version(path, "devices", "d", "2"))
+        self.assertFalse(fw.forget_version(path, "devices", "d", "2"))
+        self.assertFalse(fw.forget_version(path, "profiles", "p", "1"))
+        self.assertEqual(list(fw.load_state(path)["devices"]["d"]["discovered_at"]), ["1"])
+        self.assertTrue(fw.forget_version(path, "devices", "d", "1"))
+        self.assertEqual(fw.load_state(path)["devices"], {})
+
     def test_devices_file_is_written_atomically(self):
         path = self.root / "devices.json"
         fw.save_devices_file(path, {"devices": [{"id": "x"}]})
@@ -1888,6 +1898,16 @@ class WebServerTests(unittest.TestCase):
         status, error = self.send(server, "PATCH", "/api/entries/beta-reader", {"name": "ALPHA"})
         self.assertEqual(status, 409)
 
+    def test_forget_version_over_the_api(self):
+        server = self.start()
+        self.run_check(server)
+        status, entry = self.send(server, "POST", "/api/entries/a/forget-version", {"version": "v2"})
+        self.assertEqual(status, 200)
+        self.assertEqual([h["version"] for h in entry["history"]], ["v1"])
+        self.assertEqual(self.send(server, "POST", "/api/entries/a/forget-version", {"version": "v2"})[0], 404)
+        self.assertEqual(self.send(server, "POST", "/api/entries/a/forget-version", {})[0], 400)
+        self.assertEqual(self.send(server, "POST", "/api/entries/nope/forget-version", {"version": "v1"})[0], 404)
+
     def test_installed_latest_needs_known_versions(self):
         server = self.start()
         self.assertEqual(self.send(server, "POST", "/api/entries/a/installed-latest")[0], 409)
@@ -2207,6 +2227,61 @@ class SharedSourceTests(unittest.TestCase):
         views = {v["id"]: v for v in ws.entries()}
         self.assertEqual(views["phone-a"]["known_versions"], 0)
         self.assertEqual(views["phone-b"]["known_versions"], 3)
+
+    def test_forget_version_removes_it_for_every_device_of_the_type(self):
+        ws = fw_service.Workspace(self.devices, self.state, self.profiles_dir)
+        with mock.patch.object(fw_extract, "fetch_source", return_value="v1 v2 v3"):
+            ws.check()
+        ws.forget_version("phone-a", "v3")
+        for entry_id in ("phone-a", "phone-b"):
+            self.assertEqual([h["version"] for h in ws.entry(entry_id)["history"]], ["v2", "v1"])
+        self.assertEqual(sorted(self.stored()["profiles"]["t.os"]["discovered_at"]), ["v1", "v2"])
+        self.assertEqual(next(v for v in ws.entries() if v["id"] == "phone-b")["installed_version"], "v3")  # kept
+        with self.assertRaises(fw_service.NotFoundError):
+            ws.forget_version("phone-a", "v3")
+        with self.assertRaises(fw_service.NotFoundError):
+            ws.forget_version("nope", "v1")
+        for bad in ("", "  ", None, 5):
+            with self.assertRaises(fw_service.ServiceError):
+                ws.forget_version("phone-a", bad)
+
+    def test_a_forgotten_version_comes_back_if_the_source_still_lists_it(self):
+        ws = fw_service.Workspace(self.devices, self.state, self.profiles_dir)
+        with mock.patch.object(fw_extract, "fetch_source", return_value="v1 v2"):
+            ws.check()
+            ws.forget_version("phone-a", "v2")
+            results = ws.check()
+        self.assertEqual(results[0]["new_versions"], ["v2"])
+
+    def test_forgetting_the_last_version_starts_a_new_baseline(self):
+        ws = fw_service.Workspace(self.devices, self.state, self.profiles_dir)
+        with mock.patch.object(fw_extract, "fetch_source", return_value="v1"):
+            ws.check()
+            ws.forget_version("phone-a", "v1")
+            self.assertNotIn("t.os", self.stored().get("profiles", {}))
+            results = ws.check()
+        self.assertTrue(results[0]["summary"].startswith("Baseline (1): v1"))
+
+    def test_forget_version_of_a_direct_entry(self):
+        fw.save_devices_file(
+            self.devices,
+            {"devices": [{"id": "d", "name": "Direct", "source_type": "text", "source_url": "https://example.com/d",
+                          "version_pattern": r"v[0-9]+"}]},
+        )
+        ws = fw_service.Workspace(self.devices, self.state, self.profiles_dir)
+        with mock.patch.object(fw_extract, "fetch_source", return_value="v1 v2"):
+            ws.check()
+        ws.forget_version("d", "v2")
+        self.assertEqual(sorted(self.stored()["devices"]["d"]["discovered_at"]), ["v1"])
+
+    def test_forget_version_migrates_old_records_first(self):
+        self.legacy_state()
+        ws = fw_service.Workspace(self.devices, self.state, self.profiles_dir)
+        ws.forget_version("phone-a", "v3")
+        state = self.stored()
+        self.assertEqual(sorted(state["profiles"]["t.os"]["discovered_at"]), ["v1", "v2"])
+        self.assertNotIn("phone-a", state["devices"])
+        self.assertTrue(self.state.with_name("state.json.bak").exists())
 
     def test_service_error_applies_to_every_device_of_the_type(self):
         ws = fw_service.Workspace(self.devices, self.state, self.profiles_dir)

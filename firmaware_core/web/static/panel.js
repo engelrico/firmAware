@@ -132,12 +132,12 @@ function section(title, ...children) {
   return el("section", { class: "edit" }, el("h3", { text: title }), ...children);
 }
 
-function confirmButton(label, onConfirm) {
+function confirmButton(label, onConfirm, className = "btn danger", confirmText = "Click again to confirm") {
   let timer = null;
-  const button = el("button", { type: "button", class: "btn danger", text: label });
+  const button = el("button", { type: "button", class: className, text: label });
   button.addEventListener("click", () => {
     if (timer === null) {
-      button.textContent = "Click again to confirm";
+      button.textContent = confirmText;
       timer = setTimeout(() => {
         button.textContent = label;
         timer = null;
@@ -147,6 +147,23 @@ function confirmButton(label, onConfirm) {
     clearTimeout(timer);
     onConfirm();
   });
+  return button;
+}
+
+// For a version a profile detected by mistake: removes it from the history of the device type.
+function forgetButton(entry, version) {
+  const button = confirmButton(
+    "Remove",
+    () =>
+      change(
+        () => api(`${entryUrl(entry.id)}/forget-version`, { method: "POST", body: { version } }),
+        `Removed ${version} from the history`,
+      ),
+    "link-btn",
+    "Click again to remove",
+  );
+  button.title = "Remove this version from the history (for versions that were detected by mistake)";
+  button.setAttribute("aria-label", `Remove version ${version} from the history`);
   return button;
 }
 
@@ -262,6 +279,11 @@ function renderPanel(entry) {
   );
 
   body.append(el("h3", { text: "Version history" }));
+  if (entry.history.length > 0) {
+    body.append(
+      el("p", { class: "muted", text: "A wrongly detected version can be removed; it comes back if the source still lists it." }),
+    );
+  }
   if (entry.kind === "profile" && entry.type_devices > 1) {
     body.append(
       el("p", { class: "muted", text: `Shared by all ${entry.type_devices} devices of this type; only the installed version is per device.` }),
@@ -281,7 +303,7 @@ function renderPanel(entry) {
             el("span", { class: "mono", text: item.version }),
             item.newest ? " " : "",
             item.newest ? el("span", { class: "badge", text: "newest discovered" }) : "",
-            el("span", { class: "when", text: `discovered ${formatTime(item.discovered_at)}` }),
+            el("span", { class: "when" }, `discovered ${formatTime(item.discovered_at)} `, forgetButton(entry, item.version)),
           ),
         ),
       ),

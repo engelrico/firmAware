@@ -72,6 +72,25 @@ def update_state(
     return state
 
 
+def forget_version(path: Path, section: str, key: str, version: str) -> bool:
+    """Remove one version from the known versions of a source; False if it was not known.
+
+    Meant for versions a profile detected by mistake. A source left without any known
+    version is dropped, so its next check starts with a fresh baseline.
+    """
+    with file_lock(path):
+        state = load_state(path)
+        record = (state.get(section) or {}).get(key)
+        discovered = (record or {}).get("discovered_at") or {}
+        if version not in discovered:
+            return False
+        del discovered[version]
+        if not discovered:
+            del state[section][key]
+        save_state(path, state)
+    return True
+
+
 def _moment(value: Any) -> datetime | None:
     try:
         return datetime.fromisoformat(value)
