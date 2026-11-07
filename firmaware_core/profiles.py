@@ -20,6 +20,7 @@ def _validate_installed_version(value: Any, context: str) -> None:
 
 
 MAX_LINK_LENGTH = 2048
+MAX_IGNORED_VERSIONS = 100
 
 
 def _check_link(url: str, field: str, context: str) -> None:
@@ -79,6 +80,18 @@ def validate_source_config(source: Mapping[str, Any], context: str) -> None:
             codecs.lookup(encoding)
         except LookupError:
             raise ValueError(f"{context}: Unknown charset '{encoding}'") from None
+
+    if "ignore_versions" in source:
+        ignored = source["ignore_versions"]
+        if (
+            not isinstance(ignored, list)
+            or len(ignored) > MAX_IGNORED_VERSIONS
+            or not all(isinstance(label, str) and label.strip() for label in ignored)
+        ):
+            raise ValueError(
+                f"{context}: Field 'ignore_versions' must be a list of up to "
+                f"{MAX_IGNORED_VERSIONS} non-empty version labels"
+            )
 
     SOURCE_TYPES[source_type].validate(source, context)
 

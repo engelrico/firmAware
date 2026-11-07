@@ -267,6 +267,7 @@ Example `profiles/coros.dura.json`:
 | `source_url` | Yes | Non-empty HTTP/HTTPS URL with host |
 | `encoding` | No | Non-empty, Python-supported charset designation |
 | `source_page` | No | `http`/`https` URL of the human-readable page for the firmware source (release notes, download page). Used only as a link in the web interface, never fetched; without it the link uses `source_url` |
+| `ignore_versions` | No | List of up to 100 non-empty strings: version labels that are never stored or reported (false detections such as a version mentioned in release notes). Exact labels. Also allowed in direct entries |
 | `manufacturer` | No | Non-empty string |
 | `model` | No | Non-empty string |
 
@@ -408,6 +409,7 @@ The versions belong to the device type, only `installed_version` belongs to a de
 - `last_checked`: Time of the last **successful** check of the source, in local time zone with UTC offset and second precision. Not a timestamp of a failed attempt.
 - `discovered_at`: Mapping of every recognized version label to the timestamp when it was first discovered by a check.
 - Versions disappeared from the source remain known.
+- Labels named in the source's `ignore_versions` are left out wherever the state is read and are removed from the stored record by the next successful check; reading (`--status`, web interface) never writes the file. Because the list is part of the profile in the repository, one entry fixes every machine after a `git pull`.
 - No longer configured entries are not automatically removed from the state.
 
 **Local and private:** `state.json` is per-user runtime state. It is git-ignored and never committed; the repository ships `state.template.json` with the empty structure `{"devices": {}}`. A missing state file is treated as empty and created by the first `--check` run. `--status` prints `No state yet: state.json does not exist. Run --check first.` to `stderr` when the state file does not exist yet (also with `--device` and `--quiet`).

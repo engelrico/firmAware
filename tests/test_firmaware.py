@@ -2572,6 +2572,137 @@ class GithubReleaseProfileTests(unittest.TestCase):
             self.versions("esphome.esphome", page)
 
 
+class IgnoreVersionsTests(unittest.TestCase):
+    """ignore_versions: labels a source must never report, fixed once in the profile for every machine."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        root = Path(self._tmp.name)
+        self.profiles = root / "profiles"
+        self.profiles.mkdir()
+        self.profile = {
+            "schema_version": 2, "id": "t.os", "name": "Test OS", "category": "operating_system",
+            "source_type": "text", "source_url": "https://example.com/os",
+            "version_pattern": r"v[0-9]+", "ignore_versions": ["v99"],
+        }
+        self.write_profile(self.profile)
+        self.devices, self.state = root / "devices.json", root / "state.json"
+        fw.save_devices_file(
+            self.devices,
+            {"devices": [{"id": "a", "profile": "t.os", "name": "Phone", "installed_version": "v99"}]},
+        )
+        self.state.write_text(
+            json.dumps(
+                {
+                    "devices": {},
+                    "profiles": {
+                        "t.os": {
+                            "last_checked": "2026-10-01T10:00:00+02:00",
+                            "discovered_at": {
+                                "v1": "2026-09-01T10:00:00+02:00",
+                                "v2": "2026-10-01T10:00:00+02:00",
+                                "v99": "2026-10-01T10:00:00+02:00",
+                            },
+                        }
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        self.ws = fw_service.Workspace(self.devices, self.state, self.profiles)
+
+    def write_profile(self, profile):
+        (self.profiles / f"{profile['id']}.json").write_text(json.dumps(profile), encoding="utf-8")
+
+    def run_cli(self, content, *args):
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.object(fw_extract, "fetch_source", return_value=content):
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                code = fw.main(
+                    ["--devices", str(self.devices), "--state", str(self.state),
+                     "--profiles-dir", str(self.profiles), *args]
+                )
+        return code, out.getvalue(), err.getvalue()
+
+    def stored_versions(self):
+        return sorted(json.loads(self.state.read_text())["profiles"]["t.os"]["discovered_at"])
+
+    # --- validation ---
+
+    def test_validation(self):
+        fw.validate_profile({**self.profile, "ignore_versions": ["1", "2"]}, "t.os", "ctx")
+        fw.validate_profile({**self.profile, "ignore_versions": []}, "t.os", "ctx")
+        for bad in ("v1", [""], ["  "], [5], ["a"] * 101, {"v1": 1}, None):
+            with self.subTest(bad=bad):
+                with self.assertRaisesRegex(ValueError, "ignore_versions"):
+                    fw.validate_profile({**self.profile, "ignore_versions": bad}, "t.os", "ctx")
+        direct = {"id": "d", "source_type": "text", "source_url": "https://example.com", "version_pattern": "v",
+                  "ignore_versions": ["v1"]}
+        self.assertEqual(fw.resolve_device(direct, self.profiles)["ignore_versions"], ["v1"])
+
+    # --- extraction ---
+
+    def test_ignored_labels_are_not_extracted(self):
+        self.assertEqual(fw.extract_versions("text", "v1 v2 v99", self.profile), ["v1", "v2"])
+        with self.assertRaisesRegex(ValueError, "No versions found"):
+            fw.extract_versions("text", "v99", self.profile)
+
+    # --- reading the state ---
+
+    def test_views_do_not_show_ignored_versions(self):
+        view = self.ws.entries()[0]
+        self.assertEqual(view["latest_version"], "v2")
+        self.assertEqual(view["known_versions"], 2)
+        self.assertEqual([h["version"] for h in self.ws.entry("a")["history"]], ["v2", "v1"])
+        self.assertEqual(view["installed_version"], "v99")  # the user's value stays
+        self.assertEqual(view["installed_state"], "current")
+
+    def test_status_shows_the_clean_list_without_writing(self):
+        before = self.state.read_text()
+        code, out, _ = self.run_cli("unused", "--status")
+        self.assertEqual(code, 0)
+        row = next(line.split() for line in out.splitlines() if line.startswith("Phone"))
+        self.assertEqual(row[3], "v2")  # "Last version": the ignored v99 is not the latest
+        self.assertEqual(self.state.read_text(), before)
+
+    def test_installed_version_must_come_from_the_clean_list(self):
+        with self.assertRaises(fw_service.ServiceError):
+            self.ws.update_entry("a", {"installed_version": "v98"})  # unknown
+        self.ws.update_entry("a", {"installed_version": "v1"})
+        self.assertEqual(self.ws.mark_installed_latest("a"), "v2")
+
+    # --- writing the state ---
+
+    def test_a_check_purges_ignored_labels_from_the_state(self):
+        self.assertEqual(self.stored_versions(), ["v1", "v2", "v99"])
+        code, out, _ = self.run_cli("v1 v2 v99")
+        self.assertEqual(code, 0)
+        self.assertIn("no changes", out)
+        self.assertEqual(self.stored_versions(), ["v1", "v2"])
+
+    def test_a_new_version_is_still_reported(self):
+        code, out, _ = self.run_cli("v1 v2 v3 v99")
+        self.assertEqual(code, 0)
+        self.assertIn("new: v3", out)
+        self.assertEqual(self.stored_versions(), ["v1", "v2", "v3"])
+
+    def test_direct_entries_can_ignore_versions_too(self):
+        fw.save_devices_file(
+            self.devices,
+            {"devices": [{"id": "d", "name": "Direct", "source_type": "text", "source_url": "https://example.com/d",
+                          "version_pattern": r"v[0-9]+", "ignore_versions": ["v7"]}]},
+        )
+        self.state.write_text(
+            json.dumps({"devices": {"d": {"last_checked": "t", "discovered_at": {"v1": "t", "v7": "t"}}}}),
+            encoding="utf-8",
+        )
+        self.assertEqual(self.ws.entries()[0]["latest_version"], "v1")
+        code, out, _ = self.run_cli("v1 v7")
+        self.assertEqual(code, 0)
+        self.assertEqual(sorted(json.loads(self.state.read_text())["devices"]["d"]["discovered_at"]), ["v1"])
+
+
 class SourceTypeRegistryTests(unittest.TestCase):
     def test_registry_defines_supported_types(self):
         self.assertEqual(fw.SUPPORTED_SOURCE_TYPES, frozenset(fw_sources.SOURCE_TYPES))

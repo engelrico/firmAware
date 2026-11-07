@@ -41,9 +41,20 @@ def source_key(device: Mapping[str, Any]) -> tuple[str, str]:
 
 
 def stored_record(state: Mapping[str, Any], device: Mapping[str, Any]) -> Mapping[str, Any] | None:
-    """The stored record (``last_checked``, ``discovered_at``) of an entry's source."""
+    """The stored record (``last_checked``, ``discovered_at``) of an entry's source.
+
+    Versions listed in the source's ``ignore_versions`` are left out (on a copy; the state is
+    not changed), so a false detection disappears everywhere as soon as the profile names it.
+    A source whose known versions are all ignored counts as not recorded.
+    """
     section, key = source_key(device)
-    return (state.get(section) or {}).get(key)
+    record = (state.get(section) or {}).get(key)
+    ignored = device.get("ignore_versions")
+    if not record or not ignored:
+        return record
+    skip = set(ignored)
+    discovered = {v: when for v, when in (record.get("discovered_at") or {}).items() if v not in skip}
+    return {**record, "discovered_at": discovered} if discovered else None
 
 
 def source_name(device: Mapping[str, Any]) -> str:

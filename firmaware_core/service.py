@@ -158,7 +158,7 @@ class Workspace:
         views = []
         for entry in raw:
             resolved, error = self._resolve(entry)
-            view = _entry_view(entry, resolved, stored_record(state, entry) or {}, error)
+            view = _entry_view(entry, resolved, stored_record(state, resolved) or {}, error)
             view["type_devices"] = per_profile.get(entry.get("profile"), 1)
             views.append(view)
         return views
@@ -169,8 +169,8 @@ class Workspace:
         view = next((v for v in self.entries() if v["id"] == entry_id), None)
         if view is None:
             raise NotFoundError(f"No entry with ID '{entry_id}'")
-        entry = raw[self._find(raw, entry_id)]
-        discovered = (stored_record(self._state(raw), entry) or {}).get("discovered_at") or {}
+        resolved, _ = self._resolve(raw[self._find(raw, entry_id)])
+        discovered = (stored_record(self._state(raw), resolved) or {}).get("discovered_at") or {}
         newest = max(discovered, key=lambda v: discovered[v]) if discovered else None
         view["history"] = [
             {"version": version, "discovered_at": discovered[version], "newest": version == newest}
@@ -271,7 +271,7 @@ class Workspace:
                 candidate["device_url"] = resolved["device_url"]  # stored in its normalized form
             chosen = candidate.get("installed_version")
             if "installed_version" in changes and chosen and chosen != entry.get("installed_version"):
-                known = (stored_record(self._state(entries), candidate) or {}).get("discovered_at") or {}
+                known = (stored_record(self._state(entries), resolved) or {}).get("discovered_at") or {}
                 if not known:
                     raise ServiceError("No known versions yet; run a check first")
                 if chosen not in known:
@@ -290,9 +290,8 @@ class Workspace:
     def mark_installed_latest(self, entry_id: str) -> str:
         """Set the installed version of an entry to its highest known version."""
         raw = self._raw_entries()
-        discovered = (
-            stored_record(self._state(raw), raw[self._find(raw, entry_id)]) or {}
-        ).get("discovered_at")
+        resolved, _ = self._resolve(raw[self._find(raw, entry_id)])
+        discovered = (stored_record(self._state(raw), resolved) or {}).get("discovered_at")
 
         def change(entries: list[dict[str, Any]]) -> str:
             entry = entries[self._find(entries, entry_id)]

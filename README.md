@@ -197,6 +197,12 @@ Supported source types:
 | `json` | Versions from a JSON list | `items_key`, `version_key` |
 | `json_value` | Single value via a nested path | `value_path` |
 
+A profile can name labels that are never versions with `ignore_versions` (a list of
+exact labels), for example a version a release note merely mentions. They are
+never stored or reported and are removed from an existing `state.json` by the
+next successful check, on every machine that pulls the profile. A single machine
+can also drop a version in the web interface (*Remove* in the version history).
+
 For `version_pattern`, the following applies: without a capture group, the full
 match is the version; with exactly one capture group, its content is; more than
 one capture group is a configuration error.

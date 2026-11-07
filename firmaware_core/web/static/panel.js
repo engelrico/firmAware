@@ -281,7 +281,7 @@ function renderPanel(entry) {
   body.append(el("h3", { text: "Version history" }));
   if (entry.history.length > 0) {
     body.append(
-      el("p", { class: "muted", text: "A wrongly detected version can be removed; it comes back if the source still lists it." }),
+      el("p", { class: "muted", text: "A wrongly detected version can be removed here (only on this machine); list it under ignore_versions in the profile to remove it everywhere." }),
     );
   }
   if (entry.kind === "profile" && entry.type_devices > 1) {
