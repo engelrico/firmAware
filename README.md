@@ -280,6 +280,39 @@ Open `http://<host>:8765/?token=<token>` once; the browser then keeps a cookie.
 The connection is plain HTTP, so on untrusted networks use an SSH tunnel
 (`ssh -L 8765:localhost:8765 <host>`) or a reverse proxy with TLS instead.
 
+### Run it permanently (systemd)
+
+On a Raspberry Pi or any Linux machine with systemd the interface can start at boot
+and restart after a crash. The repository ships a template,
+[`deploy/firmaware.service.template`](deploy/firmaware.service.template). From the
+repository root, this fills in your user, the repository path, and Python, installs
+the unit, and starts it (create the access token first, as above):
+
+```bash
+sed -e "s|@USER@|$(whoami)|" -e "s|@DIR@|$(pwd)|" -e "s|@PYTHON@|$(command -v python3)|" \
+    deploy/firmaware.service.template | sudo tee /etc/systemd/system/firmaware.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now firmaware
+```
+
+Day to day:
+
+```bash
+systemctl status firmaware         # is it running?
+journalctl -u firmaware -f         # follow the log
+sudo systemctl restart firmaware   # after every git pull
+```
+
+- The service runs as your user and reads `devices.json`, `state.json`, and
+  `~/.config/firmaware/web.json` like the command line does; it needs no `sudo`.
+- The template listens on all interfaces (`--host 0.0.0.0`, token required). Remove
+  that option from `ExecStart` to listen on localhost only (then use an SSH tunnel).
+- A `git pull` changes files only; restart the service to load the new code.
+- The scheduled check (`--check --notify --quiet`, see the cron example) keeps
+  running independently; both use a lock on the state file.
+- If the token file is missing or too short, the service exits and systemd retries
+  every 5 seconds; `journalctl` shows the message with the command to create it.
+
 ## State: `state.json`
 
 `state.json` is your **private** runtime state. It is git-ignored and created
@@ -418,6 +451,8 @@ firmAware/
 │   ├── cli.py                                # argument parsing and run
 │   └── web/                                  # web interface: server.py, static/ (HTML, JS, CSS)
 ├── devices.template.json                     # starting point: one example per entry form
+├── deploy/
+│   └── firmaware.service.template            # systemd unit template for the web interface
 ├── devices.json                              # personal device selection (git-ignored)
 ├── profiles/                                 # reusable device profiles
 │   └── *.json
@@ -437,7 +472,7 @@ firmAware/
 
 ## Limitations
 
-- No automatic scheduling (left to cron or a similar tool); the optional web interface is a foreground server you start yourself.
+- No automatic scheduling (left to cron or a similar tool); the optional web interface is a foreground server you start yourself or run as a systemd service (see above).
 - Email notification is opt-in via `--notify` and needs an external SMTP relay; no push or MQTT notifications.
 - No semantic version comparison ("higher/lower") for upgrade decisions; the
   displayed "Last version" is the highest detected label using a best-effort

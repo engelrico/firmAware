@@ -30,6 +30,7 @@ This specification describes the current state of `firmaware.py`, `firmaware_cor
 | `firmaware_core/` | Implementation: `fetch`, `sources` (source type registry), `extract`, `profiles`, `state`, `checking`, `report`, `notify`, `service` (entry management and checks without output), `locking`, `cli`, `web` (HTTP server and static frontend), plus `constants` and `errors` |
 | `devices.json` | Personal entry selection (direct or via profiles) |
 | `devices.template.json` | Tracked starting point with one example per entry form |
+| `deploy/firmaware.service.template` | systemd unit template for running `--serve` permanently; placeholders `@USER@`, `@DIR@`, `@PYTHON@` are filled in by the command in the README |
 | `profiles/*.json` | Reusable entry profiles (fetch and version extraction) |
 | `state.json` | Known versions and last successful checks |
 | `state.template.json` | Tracked empty state structure |

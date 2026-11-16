@@ -25,6 +25,7 @@ firmAware/
 ├── firmaware_core/           # implementation: fetch, sources, extract, profiles, state, checking,
 │                             #   report, notify, service, locking, cli, web/ (+ constants, errors)
 ├── devices.template.json     # starting point: one example per entry form
+├── deploy/                   # systemd unit template for the web interface
 ├── devices.json              # personal entry selection (git-ignored)
 ├── profiles/                 # reusable device profiles (*.json)
 │   └── *.json                # schema v2 with category field

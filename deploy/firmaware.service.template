@@ -1,0 +1,29 @@
+# systemd unit for the firmAware web interface (template).
+#
+# Install it from the repository root with the README command, which fills in the
+# placeholders @USER@ (the account that runs the service), @DIR@ (this repository),
+# and @PYTHON@ (the Python interpreter):
+#
+#   sed -e "s|@USER@|$(whoami)|" -e "s|@DIR@|$(pwd)|" -e "s|@PYTHON@|$(command -v python3)|" \
+#       deploy/firmaware.service.template | sudo tee /etc/systemd/system/firmaware.service
+#   sudo systemctl daemon-reload && sudo systemctl enable --now firmaware
+#
+# --host 0.0.0.0 makes the interface reachable from the network and needs the access
+# token file (~/.config/firmaware/web.json). Remove it to listen on localhost only.
+
+[Unit]
+Description=firmAware web interface
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=@USER@
+WorkingDirectory=@DIR@
+Environment=PYTHONUNBUFFERED=1
+ExecStart=@PYTHON@ @DIR@/firmaware.py --serve --host 0.0.0.0
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

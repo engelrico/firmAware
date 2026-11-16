@@ -2703,6 +2703,33 @@ class IgnoreVersionsTests(unittest.TestCase):
         self.assertEqual(sorted(json.loads(self.state.read_text())["devices"]["d"]["discovered_at"]), ["v1"])
 
 
+class ServiceTemplateTests(unittest.TestCase):
+    """The systemd unit template for running the web interface permanently."""
+
+    TEMPLATE = Path(fw_web.__file__).resolve().parents[2] / "deploy" / "firmaware.service.template"
+
+    def test_placeholders_are_filled_by_the_readme_command(self):
+        text = self.TEMPLATE.read_text(encoding="utf-8")
+        for placeholder in ("@USER@", "@DIR@", "@PYTHON@"):
+            self.assertIn(placeholder, text)
+        filled = text.replace("@USER@", "pi").replace("@DIR@", "/home/pi/firmAware").replace("@PYTHON@", "/usr/bin/python3")
+        self.assertNotRegex(filled, r"@[A-Z]+@")  # no placeholder left
+        self.assertIn("ExecStart=/usr/bin/python3 /home/pi/firmAware/firmaware.py --serve", filled)
+
+    def test_unit_sections_and_restart_policy(self):
+        text = self.TEMPLATE.read_text(encoding="utf-8")
+        for section in ("[Unit]", "[Service]", "[Install]"):
+            self.assertIn(section, text)
+        self.assertIn("Restart=on-failure", text)
+        self.assertIn("WantedBy=multi-user.target", text)
+
+    def test_readme_documents_the_template(self):
+        readme = (self.TEMPLATE.parents[1] / "README.md").read_text(encoding="utf-8")
+        self.assertIn("deploy/firmaware.service.template", readme)
+        for placeholder in ("@USER@", "@DIR@", "@PYTHON@"):
+            self.assertIn(placeholder, readme)
+
+
 class SourceTypeRegistryTests(unittest.TestCase):
     def test_registry_defines_supported_types(self):
         self.assertEqual(fw.SUPPORTED_SOURCE_TYPES, frozenset(fw_sources.SOURCE_TYPES))
